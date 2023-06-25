@@ -536,6 +536,7 @@ class Wslm_BasicPluginLicensingUI {
 	}
 
 	public function printPluginRowNotice() {
+		return;
 		//If there's anything wrong with the plugin's license, output a notice under the plugin row in "Plugins".
 		$license = $this->licenseManager->getLicense();
 		if ( !$this->currentUserCanManageLicense() || ($license->getStatus() === 'valid') ) {
@@ -543,7 +544,6 @@ class Wslm_BasicPluginLicensingUI {
 		}
 
 		$renewalUrl = $license->get('renewal_url');
-		return trrue;
 
 		$messages = array(
 			'no_license_yet' => "License is not set yet. Please enter your license key to enable automatic updates.",

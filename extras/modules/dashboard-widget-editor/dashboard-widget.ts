@@ -6,17 +6,25 @@
 declare var wsAmeLodash: _.LoDashStatic;
 
 interface WidgetPropertyMap {
-	[name: string] : any;
+	[name: string]: any;
 }
 
 abstract class AmeDashboardWidget {
 	protected static _ = wsAmeLodash;
 
+	public static readonly locationToColumnMap: Record<string, number> = {
+		'normal': 0,
+		'side': 1,
+		'column3': 2,
+		'column4': 3
+	};
+	public static readonly columnToLocationMap: Array<string> = Object.keys(AmeDashboardWidget.locationToColumnMap);
+
 	id: string;
 
-	title: KnockoutObservable<string>;
-	location: KnockoutObservable<string>;
-	priority: KnockoutObservable<string>;
+	abstract title: KnockoutObservable<string>;
+	abstract location: KnockoutObservable<string>;
+	abstract priority: KnockoutObservable<string>;
 	isPresent: boolean = true;
 	grantAccess: AmeActorAccessDictionary;
 
@@ -33,12 +41,13 @@ abstract class AmeDashboardWidget {
 	canBeDeleted: boolean = false;
 	canChangePriority: boolean = false;
 	canChangeTitle: boolean = true;
+	canBeMoved: boolean = true;
 	areAdvancedPropertiesVisible: KnockoutObservable<boolean>;
 
 	widgetEditor: AmeDashboardWidgetEditor;
 
 	propertyTemplate: string = '';
-	protected widgetType: string = null;
+	protected widgetType: string | null = null;
 
 	protected constructor(settings: WidgetPropertyMap, widgetEditor: AmeDashboardWidgetEditor) {
 		this.rawProperties = settings;
@@ -77,7 +86,7 @@ abstract class AmeDashboardWidget {
 			read: (): boolean => {
 				let actor = widgetEditor.selectedActor();
 				if (actor !== null) {
-					return this.actorHasAccess(actor);
+					return !!this.actorHasAccess(actor);
 				} else {
 					//Check if any actors have this widget enabled.
 					//We only care about visible actors. There might be some users that are loaded but not visible.
@@ -119,7 +128,11 @@ abstract class AmeDashboardWidget {
 		return input.replace(commentsAndPhpTags, '').replace(tags, '');
 	}
 
-	protected createObservableWithDefault(customValue: string, defaultValue: string, writeCallback) {
+	protected createObservableWithDefault(
+		customValue: string,
+		defaultValue: string,
+		writeCallback: (newValue: string, oldValue: string) => any
+	) {
 		//Sentinel value: '' (the empty string). Null is also accepted and automatically converted to ''.
 		const sentinel = '';
 
@@ -171,7 +184,7 @@ abstract class AmeDashboardWidget {
 	}
 
 	toPropertyMap(): WidgetPropertyMap {
-		let properties = {
+		let properties: WidgetPropertyMap = {
 			'id': this.id,
 			'title': this.title(),
 			'location': this.location(),
@@ -188,7 +201,7 @@ abstract class AmeDashboardWidget {
 		return properties;
 	}
 
-	protected actorHasAccess(actorId: string, actor?: IAmeActor, defaultAccess: boolean = true) {
+	protected actorHasAccess(actorId: string, actor?: IAmeActor | null, defaultAccess: boolean = true) {
 		//Is there a setting for this actor specifically?
 		let hasAccess = this.grantAccess.get(actorId, null);
 		if (hasAccess !== null) {
@@ -209,7 +222,7 @@ abstract class AmeDashboardWidget {
 			for (let index = 0; index < actor.roles.length; index++) {
 				let roleActor = 'role:' + actor.roles[index],
 					roleHasAccess = this.grantAccess.get(roleActor, true);
-				result = result || roleHasAccess;
+				result = result || (!!roleHasAccess);
 			}
 			return result;
 		}
@@ -223,55 +236,6 @@ interface KnockoutComputed<T> {
 	resetToDefault: () => void;
 	getCustomValue: () => T;
 }
-
-class AmeActorAccessDictionary {
-	items: { [actorId: string] : KnockoutObservable<boolean>; } = {};
-	private readonly numberOfObservables: KnockoutObservable<number>;
-
-	constructor(initialData?: AmeDictionary<boolean>) {
-		this.numberOfObservables = ko.observable(0);
-		if (initialData) {
-			this.setAll(initialData);
-		}
-	}
-
-	get(actor: string, defaultValue = null): boolean {
-		if (this.items.hasOwnProperty(actor)) {
-			return this.items[actor]();
-		}
-		this.numberOfObservables(); //Establish a dependency.
-		return defaultValue;
-	}
-
-	set(actor: string, value: boolean) {
-		if (!this.items.hasOwnProperty(actor)) {
-			this.items[actor] = ko.observable(value);
-			this.numberOfObservables(this.numberOfObservables() + 1);
-		} else {
-			this.items[actor](value);
-		}
-	}
-
-	// noinspection JSUnusedGlobalSymbols
-	getAll(): AmeDictionary<boolean> {
-		let result: AmeDictionary<boolean> = {};
-		for (let actorId in this.items) {
-			if (this.items.hasOwnProperty(actorId)) {
-				result[actorId] = this.items[actorId]();
-			}
-		}
-		return result;
-	}
-
-	setAll(values: AmeDictionary<boolean>) {
-		for (let actorId in values) {
-			if (values.hasOwnProperty(actorId)) {
-				this.set(actorId, values[actorId]);
-			}
-		}
-	}
-}
-
 
 interface WrappedWidgetProperties {
 	title: string;
@@ -306,7 +270,13 @@ class AmeStandardWidgetWrapper extends AmeDashboardWidget {
 		this.location = this.createObservableWithDefault(
 			settings['location'],
 			this.wrappedWidget.location,
-			function () {
+			function (value: string|null) {
+				if (value === null) {
+					return null;
+				}
+				if (AmeDashboardWidget.locationToColumnMap.hasOwnProperty(value)) {
+					return value;
+				}
 				return null;
 			}
 		);
@@ -342,6 +312,10 @@ class AmeStandardWidgetWrapper extends AmeDashboardWidget {
 
 
 class AmeCustomHtmlWidget extends AmeDashboardWidget {
+	location: KnockoutObservable<string>;
+	priority: KnockoutObservable<string>;
+	title: KnockoutObservable<string>;
+
 	content: KnockoutObservable<string>;
 	filtersEnabled: KnockoutObservable<boolean>;
 
@@ -380,6 +354,8 @@ class AmeCustomHtmlWidget extends AmeDashboardWidget {
 		properties['filtersEnabled'] = this.filtersEnabled();
 		return properties;
 	}
+
+
 }
 
 class AmeCustomRssWidget extends AmeDashboardWidget {
@@ -388,8 +364,13 @@ class AmeCustomRssWidget extends AmeDashboardWidget {
 	showAuthor: KnockoutObservable<boolean>;
 	showDate: KnockoutObservable<boolean>;
 	showSummary: KnockoutObservable<boolean>;
+	readonly openInNewTab: KnockoutObservable<boolean>;
 
 	maxItems: KnockoutObservable<number>;
+
+	location: KnockoutObservable<string>;
+	priority: KnockoutObservable<string>;
+	title: KnockoutObservable<string>;
 
 	constructor(settings: WidgetPropertyMap, widgetEditor: AmeDashboardWidgetEditor) {
 		const _ = AmeDashboardWidget._;
@@ -415,6 +396,7 @@ class AmeCustomRssWidget extends AmeDashboardWidget {
 		this.showAuthor = ko.observable(_.get(settings, 'showAuthor', true));
 		this.showDate = ko.observable(_.get(settings, 'showDate', true));
 		this.showSummary = ko.observable(_.get(settings, 'showSummary', true));
+		this.openInNewTab = ko.observable(_.get(settings, 'openInNewTab', false));
 
 		this.isPresent = true;
 		this.canBeDeleted = true;
@@ -424,10 +406,15 @@ class AmeCustomRssWidget extends AmeDashboardWidget {
 
 	toPropertyMap(): WidgetPropertyMap {
 		let properties = super.toPropertyMap();
-		let storedProps = ['feedUrl', 'showAuthor', 'showDate', 'showSummary', 'maxItems'];
+		let storedProps = ['feedUrl', 'showAuthor', 'showDate', 'showSummary', 'openInNewTab', 'maxItems'];
+		const self = this as Record<string, unknown>;
+
 		for (let i = 0; i < storedProps.length; i++) {
 			let name = storedProps[i];
-			properties[name] = this[name]();
+			const property = self[name];
+			if (property && ko.isObservable(property)) {
+				properties[name] = property();
+			}
 		}
 		return properties;
 	}
@@ -435,6 +422,10 @@ class AmeCustomRssWidget extends AmeDashboardWidget {
 
 class AmeWelcomeWidget extends AmeDashboardWidget {
 	static permanentId: string = 'special:welcome-panel';
+
+	location: KnockoutObservable<string>;
+	priority: KnockoutObservable<string>;
+	title: KnockoutObservable<string>;
 
 	constructor(settings: WidgetPropertyMap, widgetEditor: AmeDashboardWidgetEditor) {
 		const _ = AmeDashboardWidget._;
@@ -458,6 +449,7 @@ class AmeWelcomeWidget extends AmeDashboardWidget {
 
 		this.canChangeTitle = false;
 		this.canChangePriority = false;
+		this.canBeMoved = false;
 		this.areAdvancedPropertiesVisible(false);
 
 		//The "Welcome" widget is part of WordPress core. It's always present and can't be deleted.
@@ -467,14 +459,14 @@ class AmeWelcomeWidget extends AmeDashboardWidget {
 		this.propertyTemplate = 'ame-welcome-widget-template';
 	}
 
-	protected actorHasAccess(
+	protected override actorHasAccess(
 		actorId: string,
 		actor?: AmeBaseActor,
-		defaultAccess: boolean = true
-	): boolean | boolean | boolean | boolean {
+		defaultAccess?: boolean
+	): boolean | null {
 		//Only people who have the "edit_theme_options" capability can see the "Welcome" panel.
 		//See /wp-admin/index.php, line #108 or thereabouts.
-		defaultAccess = AmeActors.hasCapByDefault(actorId, 'edit_theme_options');
+		defaultAccess = !!AmeActors.hasCapByDefault(actorId, 'edit_theme_options');
 		return super.actorHasAccess(actorId, actor, defaultAccess);
 	}
 }
@@ -484,9 +476,15 @@ class AmeWidgetPropertyComponent {
 	widget: AmeDashboardWidget;
 	label: string;
 
-	constructor(params) {
+	constructor(params: Record<string, unknown>) {
+		if (typeof params['widget'] === 'undefined') {
+			throw new Error('Missing required parameter "widget"');
+		}
+		if (!(params['widget'] instanceof AmeDashboardWidget)) {
+			throw new Error('Parameter "widget" must be an instance of AmeDashboardWidget');
+		}
 		this.widget = params['widget'];
-		this.label = params['label'] || '';
+		this.label = params['label'] ? (String(params['label'])) : '';
 	}
 }
 

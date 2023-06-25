@@ -193,7 +193,7 @@ class ameSuperUsers extends ameModule {
 		wp_enqueue_auto_versioned_script(
 			'ame-super-users',
 			plugins_url('super-users.js', __FILE__),
-			array('knockout', 'jquery', 'ame-visible-users', 'ame-actor-manager', 'ame-jquery-cookie')
+			array('ame-knockout', 'jquery', 'ame-visible-users', 'ame-actor-manager', 'ame-jquery-cookie')
 		);
 
 		//Pass users to JS.

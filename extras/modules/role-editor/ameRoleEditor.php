@@ -77,6 +77,7 @@ class ameRoleEditor extends amePersistentProModule {
 	private $cachedEnabledRoleCaps = array();
 
 	public function __construct($menuEditor) {
+		$this->settingsWrapperEnabled = true;
 		parent::__construct($menuEditor);
 
 		add_filter('editable_roles', array($this, 'filterEditableRoles'), 20, 1);
@@ -104,7 +105,7 @@ class ameRoleEditor extends amePersistentProModule {
 			plugins_url('role-editor.js', __FILE__),
 			array(
 				'ame-lodash',
-				'knockout',
+				'ame-knockout',
 				'jquery',
 				'jquery-qtip',
 				'ame-actor-manager',
@@ -1860,7 +1861,7 @@ class ameRoleEditor extends amePersistentProModule {
 			$roleObject = get_role($roleId);
 			$capabilities = isset($roleObject->capabilities) ? $roleObject->capabilities : null;
 		}
-		if (!isset($capabilities)) {
+		if (!isset($capabilities) || !is_array($capabilities)) {
 			return array();
 		}
 

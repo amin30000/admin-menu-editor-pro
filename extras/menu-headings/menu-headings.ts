@@ -17,7 +17,7 @@ class AmePlainMenuHeadingSettings {
 	fontWeight: AmeCssFontWeight = 'normal';
 	fontSizeValue: number = 14;
 	fontSizeUnit: AmeFontSizeUnit = 'px';
-	fontFamily: string = null;
+	fontFamily: string | null = null;
 
 	textTransform: AmeTextTransformOption = 'none';
 
@@ -106,19 +106,19 @@ class AmeMenuHeadingSettings implements AmeRecursiveObservablePropertiesOf<IAmeP
 	}
 
 	setAll(settings: AmePlainMenuHeadingSettings) {
-		const newSettings = wsAmeLodash.defaults({}, settings, this.defaults);
+		const newSettings: Partial<IAmePlainMenuHeadingSettings> = wsAmeLodash.defaults({}, settings, this.defaults);
 
 		//The default object has all of the valid properties. We can use that to ensure that
 		//we only copy or create relevant properties.
-		const properties = Object.keys(this.defaults);
+		const properties = Object.keys(this.defaults) as Array<keyof typeof this.defaults>;
 
 		for (let i = 0; i < properties.length; i++) {
 			const key = properties[i];
 			if (typeof this[key] === 'undefined') {
-				this[key] = ko.observable(null);
+				(this as any)[key] = ko.observable(null);
 			}
 			if (ko.isWriteableObservable(this[key])) {
-				this[key](newSettings[key]);
+				(this as any)[key](newSettings[key]);
 			}
 		}
 
@@ -142,11 +142,12 @@ class AmeMenuHeadingSettings implements AmeRecursiveObservablePropertiesOf<IAmeP
 
 	getAll(): AmePlainMenuHeadingSettings {
 		let result: Partial<AmePlainMenuHeadingSettings> = {};
-		const properties = Object.keys(this.defaults);
+		const properties = Object.keys(this.defaults) as Array<keyof typeof this.defaults>;
 		for (let i = 0; i < properties.length; i++) {
 			const key = properties[i];
-			if (ko.isObservable(this[key])) {
-				result[key] = this[key]();
+			const value = this[key];
+			if (ko.isObservable(value)) {
+				result[key] = value();
 			}
 		}
 
@@ -160,12 +161,12 @@ class AmeMenuHeadingSettings implements AmeRecursiveObservablePropertiesOf<IAmeP
 	}
 
 	resetToDefault() {
-		for (let key in this.defaults) {
-			if (!this.defaults.hasOwnProperty(key) || !ko.isObservable(this[key])) {
-				continue;
+		AmeMiniFunc.forEachObjectKey(this.defaults, (key, defaultValue) => {
+			const property = this[key];
+			if (property && ko.isObservable(property)) {
+				property(defaultValue);
 			}
-			this[key](this.defaults[key]);
-		}
+		});
 
 		this.bottomBorder.color(this.defaults.bottomBorder.color);
 		this.bottomBorder.style(this.defaults.bottomBorder.style);
@@ -179,10 +180,10 @@ class AmeMenuHeadingSettings implements AmeRecursiveObservablePropertiesOf<IAmeP
 }
 
 class AmeMenuHeadingSettingsScreen {
-	private currentSavedSettings: AmePlainMenuHeadingSettings = null;
+	private currentSavedSettings: AmePlainMenuHeadingSettings | null = null;
 	settings: AmeMenuHeadingSettings;
 
-	dialog: JQuery = null;
+	dialog: JQuery | null = null;
 	isOpen: KnockoutObservable<boolean>;
 
 	constructor() {
@@ -222,7 +223,7 @@ class AmeMenuHeadingSettingsScreen {
 		return (color === '');
 	}
 
-	setSettings(settings: IAmePlainMenuHeadingSettings) {
+	setSettings(settings: IAmePlainMenuHeadingSettings | null) {
 		this.currentSavedSettings = settings;
 		if (settings === null) {
 			this.settings.resetToDefault();
@@ -232,7 +233,7 @@ class AmeMenuHeadingSettingsScreen {
 		this.settings.setAll(settings);
 	}
 
-	getSettings(): IAmePlainMenuHeadingSettings {
+	getSettings(): IAmePlainMenuHeadingSettings | null {
 		return this.currentSavedSettings;
 	}
 
@@ -254,8 +255,8 @@ class AmeMenuHeadingSettingsScreen {
 }
 
 (function ($) {
-	let screen: AmeMenuHeadingSettingsScreen = null;
-	let currentSettings: IAmePlainMenuHeadingSettings = null;
+	let screen: AmeMenuHeadingSettingsScreen | null = null;
+	let currentSettings: IAmePlainMenuHeadingSettings | null = null;
 
 	$(document)
 		.on('menuConfigurationLoaded.adminMenuEditor', function (event, menuConfiguration) {
@@ -290,7 +291,7 @@ class AmeMenuHeadingSettingsScreen {
 				.find('> a');
 
 			const mostCommonSize = wsAmeLodash.chain($menus)
-				.countBy(function (menu) {
+				.countBy(function (menu: HTMLElement) {
 					return $(menu).css('fontSize');
 				})
 				.pairs()
@@ -300,7 +301,7 @@ class AmeMenuHeadingSettingsScreen {
 
 			if (mostCommonSize && (mostCommonSize.length >= 1) && wsAmeLodash.isString(mostCommonSize[0])) {
 				let matches = mostCommonSize[0].match(/^(\d+)px$/i);
-				if (matches.length > 0) {
+				if ((matches !== null) && (matches.length > 0)) {
 					let result = parseInt(matches[1], 10);
 					if (result > 0) {
 						return result;
@@ -339,7 +340,9 @@ class AmeMenuHeadingSettingsScreen {
 				initializeHeadingDialog();
 			}
 
-			screen.discardChanges();
+			if (screen) {
+				screen.discardChanges();
+			}
 			headingDialog.dialog('open');
 		});
 	});

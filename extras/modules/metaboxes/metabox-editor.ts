@@ -3,14 +3,14 @@
 /// <reference path="../../../modules/actor-selector/actor-selector.ts" />
 /// <reference path="../../../js/common.d.ts" />
 
-declare const wsAmeMetaBoxEditorData;
+declare const wsAmeMetaBoxEditorData: any;
 
 interface MetaBoxEditorSettings {
 	format: {
 		name: string,
 		version: string
 	},
-	screens: {[id: string] : ScreenSettingsData};
+	screens: { [id: string]: ScreenSettingsData };
 	isInitialRefreshDone: boolean;
 }
 
@@ -26,7 +26,7 @@ class AmeMetaBoxEditor {
 	screens: KnockoutObservableArray<AmeMetaBoxCollection>;
 
 	actorSelector: AmeActorSelector;
-	selectedActor: KnockoutComputed<IAmeActor|null>;
+	selectedActor: KnockoutComputed<IAmeActor | null>;
 
 	settingsData: KnockoutObservable<string>;
 	canAnyBoxesBeDeleted: boolean = false;
@@ -39,20 +39,20 @@ class AmeMetaBoxEditor {
 		this.actorSelector = new AmeActorSelector(AmeActors, true);
 
 		//Wrap the selected actor in a computed observable so that it can be used with Knockout.
-		let _selectedActor = ko.observable(
+		let _selectedActor = ko.observable<IAmeActor | null>(
 			this.actorSelector.selectedActor
 				? AmeActors.getActor(this.actorSelector.selectedActor)
 				: null
 		);
-		this.selectedActor = ko.computed<AmeBaseActor|null>({
+		this.selectedActor = ko.computed({
 			read: function () {
 				return _selectedActor();
 			},
-			write: (newActor: AmeBaseActor) => {
-				this.actorSelector.setSelectedActor(newActor ? newActor.id : null);
+			write: (newActor) => {
+				this.actorSelector.setSelectedActor(newActor ? newActor.getId() : null);
 			}
 		});
-		this.actorSelector.onChange((newSelectedActorId: string|null) => {
+		this.actorSelector.onChange((newSelectedActorId: string | null) => {
 			if (newSelectedActorId === null) {
 				_selectedActor(null);
 			} else {
@@ -78,14 +78,14 @@ class AmeMetaBoxEditor {
 				}
 
 				return new AmeMetaBoxCollection(
-					id,
+					id!,
 					metaBoxes,
 					screenData['isContentTypeMissing:'],
 					this
 				);
 			})
 		);
-		this.screens.sort(function(a, b) {
+		this.screens.sort(function (a, b) {
 			return a.formattedTitle.localeCompare(b.formattedTitle);
 		});
 
@@ -122,14 +122,16 @@ class AmeMetaBoxEditor {
 
 		const _ = AmeMetaBoxEditor._;
 		_.forEach(this.screens(), function (collection) {
-			let thisScreenData = {
-				'metaBoxes:' : {},
-				'postTypeFeatures:' : {},
-				'isContentTypeMissing:' : collection.isContentTypeMissing
+			let thisScreenData: ScreenSettingsData = {
+				'metaBoxes:': {},
+				'postTypeFeatures:': {},
+				'isContentTypeMissing:': collection.isContentTypeMissing
 			};
-			_.forEach(collection.boxes(), function(metaBox) {
+			_.forEach(collection.boxes(), function (metaBox) {
 				let key = metaBox.parentCollectionKey ? metaBox.parentCollectionKey : 'metaBoxes:';
-				thisScreenData[key][metaBox.id] = metaBox.toPropertyMap();
+				if ((key === 'metaBoxes:') || (key === 'postTypeFeatures:')) {
+					thisScreenData[key][metaBox.id] = metaBox.toPropertyMap();
+				}
 			});
 			settings.screens[collection.screenId] = thisScreenData;
 		});
@@ -174,7 +176,7 @@ class AmeMetaBox {
 
 	canBeDeleted: boolean = false;
 	isVirtual: boolean = false;
-	tooltipText: string = null;
+	tooltipText: string|null = null;
 
 	private readonly initialProperties: MetaBoxPropertyMap;
 	protected metaBoxEditor: AmeMetaBoxEditor;
@@ -242,7 +244,9 @@ class AmeMetaBox {
 					//Enable/disable all.
 					_.forEach(
 						metaBoxEditor.actorSelector.getVisibleActors(),
-						(anActor) => { this.grantAccess.set(anActor.getId(), checked); }
+						(anActor) => {
+							this.grantAccess.set(anActor.getId(), checked);
+						}
 					);
 				}
 			}
@@ -268,7 +272,9 @@ class AmeMetaBox {
 					//Enable/disable all.
 					_.forEach(
 						metaBoxEditor.actorSelector.getVisibleActors(),
-						(anActor) => { this.defaultVisibility.set(anActor.getId(), checked); }
+						(anActor) => {
+							this.defaultVisibility.set(anActor.getId(), checked);
+						}
 					);
 				}
 			}
@@ -311,7 +317,7 @@ class AmeMetaBox {
 			for (let index = 0; index < actor.roles.length; index++) {
 				let roleActor = 'role:' + actor.roles[index],
 					roleHasAccess = grants.get(roleActor, roleDefault);
-				result = result || roleHasAccess;
+				result = result || (!!roleHasAccess);
 			}
 			return result;
 		}
@@ -345,54 +351,7 @@ class AmeMetaBox {
 }
 
 interface MetaBoxPropertyMap {
-	[name: string] : any;
-}
-
-class AmeActorAccessDictionary {
-	items: { [actorId: string] : KnockoutObservable<boolean>; } = {};
-	private readonly numberOfObservables: KnockoutObservable<number>;
-
-	constructor(initialData?: AmeDictionary<boolean>) {
-		this.numberOfObservables = ko.observable(0);
-		if (initialData) {
-			this.setAll(initialData);
-		}
-	}
-
-	get(actor: string, defaultValue = null): boolean {
-		if (this.items.hasOwnProperty(actor)) {
-			return this.items[actor]();
-		}
-		this.numberOfObservables(); //Establish a dependency.
-		return defaultValue;
-	}
-
-	set(actor: string, value: boolean) {
-		if (!this.items.hasOwnProperty(actor)) {
-			this.items[actor] = ko.observable(value);
-			this.numberOfObservables(this.numberOfObservables() + 1);
-		} else {
-			this.items[actor](value);
-		}
-	}
-
-	getAll(): AmeDictionary<boolean> {
-		let result: AmeDictionary<boolean> = {};
-		for (let actorId in this.items) {
-			if (this.items.hasOwnProperty(actorId)) {
-				result[actorId] = this.items[actorId]();
-			}
-		}
-		return result;
-	}
-
-	setAll(values: AmeDictionary<boolean>) {
-		for (let actorId in values) {
-			if (values.hasOwnProperty(actorId)) {
-				this.set(actorId, values[actorId]);
-			}
-		}
-	}
+	[name: string]: any;
 }
 
 class AmeMetaBoxCollection {
@@ -407,7 +366,7 @@ class AmeMetaBoxCollection {
 
 	constructor(
 		screenId: string,
-		metaBoxes: {[id: string]: MetaBoxPropertyMap},
+		metaBoxes: { [id: string]: MetaBoxPropertyMap },
 		isContentTypeMissing: boolean,
 		metaBoxEditor: AmeMetaBoxEditor
 	) {
@@ -415,11 +374,11 @@ class AmeMetaBoxCollection {
 		this.formattedTitle = screenId.charAt(0).toUpperCase() + screenId.slice(1);
 		this.isContentTypeMissing = isContentTypeMissing;
 
-		this.boxes = ko.observableArray(AmeMetaBoxCollection._.map(metaBoxes, function(properties) {
+		this.boxes = ko.observableArray(AmeMetaBoxCollection._.map(metaBoxes, function (properties) {
 			return new AmeMetaBox(properties, metaBoxEditor);
 		}));
 
-		this.boxes.sort(function(a, b) {
+		this.boxes.sort(function (a, b) {
 			return a.id.localeCompare(b.id);
 		});
 
@@ -427,13 +386,13 @@ class AmeMetaBoxCollection {
 	}
 
 	//noinspection JSUnusedGlobalSymbols Use by KO.
-	deleteBox(item) {
+	deleteBox(item: AmeMetaBox) {
 		this.boxes.remove(item);
 	}
 }
 
 
-jQuery(function() {
+jQuery(function () {
 	let metaBoxEditor = new AmeMetaBoxEditor(wsAmeMetaBoxEditorData.settings, wsAmeMetaBoxEditorData.refreshUrl);
 	ko.applyBindings(metaBoxEditor, document.getElementById('ame-meta-box-editor'));
 
@@ -443,8 +402,8 @@ jQuery(function() {
 		columnCount = tables.find('thead').first().find('th').length,
 		maxWidths = wsAmeLodash.fill(Array(columnCount), 0);
 
-	tables.find('tr').each(function() {
-		$(this).find('td,th').each(function(index) {
+	tables.find('tr').each(function (this: HTMLElement) {
+		$(this).find('td,th').each(function (this: HTMLElement, index) {
 			const width = $(this).width();
 			if (maxWidths[index]) {
 				maxWidths[index] = Math.max(width, maxWidths[index]);
@@ -454,14 +413,14 @@ jQuery(function() {
 		})
 	});
 
-	tables.each(function() {
-		$(this).find('thead th').each(function(index) {
+	tables.each(function (this: HTMLElement) {
+		$(this).find('thead th').each(function (this: HTMLElement, index) {
 			$(this).width(maxWidths[index]);
 		});
 	});
 
 	//Set up tooltips.
-	if ($['qtip']) {
+	if (typeof ($ as any)['qtip'] !== 'undefined') {
 		$('#ame-meta-box-editor .ws_tooltip_trigger').qtip({
 			style: {
 				classes: 'qtip qtip-rounded ws_tooltip_node'

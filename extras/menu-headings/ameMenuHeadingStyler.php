@@ -7,7 +7,7 @@ class ameMenuHeadingStyler {
 	private $menuEditor;
 
 	/**
-	 * ameMenuSeparatorStyler constructor.
+	 * ameMenuHeadingStyler constructor.
 	 *
 	 * @param WPMenuEditor $menuEditor
 	 */

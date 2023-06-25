@@ -37,7 +37,8 @@ return array(
 
 		'hide-gutenberg-options'    => array(
 			'label'    => 'Hide the Gutenberg options menu (three vertical dots)',
-			'selector' => '#editor .edit-post-header__settings .edit-post-more-menu',
+			'selector' => '#editor .edit-post-header__settings .edit-post-more-menu,'
+				.' #editor .edit-post-header__settings .interface-more-menu-dropdown',
 		),
 		'hide-gutenberg-fs-wp-logo' => array(
 			'label'    => 'Hide the WordPress logo in Gutenberg fullscreen mode',

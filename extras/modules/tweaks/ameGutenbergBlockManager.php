@@ -48,7 +48,7 @@ class ameGutenbergBlockManager {
 		wp_enqueue_script(
 			self::SCRIPT_HANDLE,
 			plugins_url('gutenberg-block-detector.js', __FILE__),
-			array('wp-blocks', 'wp-dom-ready', 'wp-edit-post', 'jquery'),
+			array('jquery', 'wp-dom-ready'),
 			'20210218-4',
 			true
 		);

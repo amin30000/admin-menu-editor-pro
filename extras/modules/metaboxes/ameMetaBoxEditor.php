@@ -399,7 +399,8 @@ class ameMetaBoxEditor extends ameModule implements ameExportableModule {
 			plugins_url('metabox-editor.js', __FILE__),
 			array(
 				'ame-lodash',
-				'knockout',
+				'ame-knockout',
+				'ame-pro-common-lib',
 				'ame-actor-selector',
 				'jquery',
 				'ame-actor-manager',
@@ -535,10 +536,21 @@ class ameMetaBoxEditor extends ameModule implements ameExportableModule {
 			return;
 		}
 
+		//Enqueue after wp-edit-post if possible. This is a dependency, but we can't simply
+		//always add it because the "Appearance -> Widgets" page also loads Gutenberg assets
+		//(triggering this callback) but specifically disallows the wp-edit-post script.
+		//AFAICT, there's no general way to detect when wp-edit-post is allowed or not.
+		$dependencies = array('jquery', 'wp-data');
+		/** @noinspection PhpRedundantOptionalArgumentInspection -- What WP core changes the default? */
+		if ( wp_script_is('wp-edit-post', 'enqueued') ) {
+			$dependencies[] = 'wp-edit-post';
+		}
+
 		wp_enqueue_auto_versioned_script(
 			'ame-hide-gutenberg-panels',
 			plugins_url('hide-gutenberg-panels.js', __FILE__),
-			array('wp-data', 'wp-blocks', 'wp-edit-post', 'jquery')
+			$dependencies,
+			true
 		);
 
 		wp_localize_script(

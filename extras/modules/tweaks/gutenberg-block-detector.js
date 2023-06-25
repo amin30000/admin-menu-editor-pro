@@ -34,6 +34,14 @@ if (typeof wp !== 'undefined' && typeof wp.domReady !== 'undefined') {
 		//Wait for Gutenberg to load.
 		loadGutenberg.then(function () {
 			setTimeout(function () {
+				if (
+					(typeof wp.blocks === 'undefined')
+					|| (typeof wp.blocks.getBlockTypes === 'undefined')
+					|| (typeof wp.blocks.getCategories === 'undefined')
+				) {
+					return;
+				}
+
 				let hasNewData = false;
 
 				//We're using arrays instead of objects because we want to preserve item order.

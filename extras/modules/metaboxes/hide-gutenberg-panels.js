@@ -7,7 +7,13 @@
 	 * @param {Array} data.selectorsToHide List of jQuery selectors to hide.
 	 */
 	function (data) {
-		if (typeof data['panelsToRemove'] !== 'undefined') {
+		if (
+			(typeof data['panelsToRemove'] !== 'undefined')
+			&& (typeof wp !== 'undefined')
+			&& (typeof wp.data !== 'undefined')
+			&& (typeof wp.data.dispatch === 'function')
+			&& (wp.data.dispatch('core/edit-post'))
+		) {
 			for (var i = 0; i < data.panelsToRemove.length; i++) {
 				// noinspection JSUnresolvedFunction
 				wp.data.dispatch('core/edit-post').removeEditorPanel(data.panelsToRemove[i]);

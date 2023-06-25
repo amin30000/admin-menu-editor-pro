@@ -10,6 +10,9 @@ class ameStandardWidgetWrapper extends ameDashboardWidget {
 	 */
 	private $wrappedWidget;
 
+	/**
+	 * @var bool
+	 */
 	private $wasPresent = true;
 	private $callbackFileName = null;
 
@@ -89,7 +92,11 @@ class ameStandardWidgetWrapper extends ameDashboardWidget {
 	}
 	
 	private function updateCallbackFileName() {
-		$reflection = new AmeReflectionCallable($this->callback);
+		try {
+			$reflection = new AmeReflectionCallable($this->callback);
+		} catch (ReflectionException $e) {
+			return false;
+		}
 
 		$fileName = $reflection->getFileName();
 		if ($fileName === false) {
@@ -115,6 +122,13 @@ class ameStandardWidgetWrapper extends ameDashboardWidget {
 		return $this->getProperty('location');
 	}
 
+	public function getOriginalLocation() {
+		if ( isset($this->wrappedWidget['location']) ) {
+			return $this->wrappedWidget['location'];
+		}
+		return $this->getLocation();
+	}
+
 	public function getPriority() {
 		return $this->getProperty('priority');
 	}
@@ -124,6 +138,34 @@ class ameStandardWidgetWrapper extends ameDashboardWidget {
 			return $this->$name;
 		}
 		return $this->wrappedWidget[$name];
+	}
+
+	public function getCallbackArgs() {
+		/*
+		 * Subtle detail: WordPress stores a copy of the original widget title in the callback
+		 * argument array, under the key "__widget_basename". This is used as the widget name
+		 * in the "Screen Options" tab and in a couple of other UI labels/tooltips. It seems
+		 * that the idea is to have a "nice" name for widgets where the full title also contains
+		 * things like a "Configure" link, etc.
+		 *
+		 * If the user has set a custom title, we need to replace the "__widget_basename"
+		 * value to make the custom title appear in the "Screen Options" tab.
+		 */
+		$callbackArgs = $this->callbackArgs;
+		if (
+			//Does the widget have a basename (original title)?
+			is_array($callbackArgs)
+			&& isset($callbackArgs['__widget_basename'])
+			//Has the user set a custom title?
+			&& isset($this->wrappedWidget['title'])
+			&& ($this->getTitle() !== $this->wrappedWidget['title'])
+		) {
+			//Also change the basename.
+			$callbackArgs['__widget_basename'] = $this->getTitle();
+			return $callbackArgs;
+		}
+
+		return parent::getCallbackArgs();
 	}
 
 	public function isPresent() {

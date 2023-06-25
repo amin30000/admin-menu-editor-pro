@@ -1,8 +1,11 @@
 {
 	"compilerOptions": {
-		"module": "none",
-		"target": "es5",
-		"sourceMap": true
+		"module": "es2020",
+		"target": "es2015",
+		"sourceMap": true,
+		"strict": true,
+		"moduleResolution": "node",
+		"typeRoots": ["./node_modules/@types"]
 	},
 	"exclude": []
 }

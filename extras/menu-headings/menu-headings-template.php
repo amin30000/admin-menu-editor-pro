@@ -42,9 +42,9 @@
 							       data-bind="checked: settings.backgroundColorType">
 							<span class="ame-fixed-label-text">Custom</span>
 						</label>
-						<label for="ame-custom-heading-text-color" class="hidden">Custom heading background
+						<label for="ame-custom-heading-background-color" class="hidden">Custom heading background
 							color</label>
-						<input type="text" id="ame-custom-heading-text-color"
+						<input type="text" id="ame-custom-heading-background-color"
 						       data-bind="ameColorPicker: settings.backgroundColor">
 					</p>
 

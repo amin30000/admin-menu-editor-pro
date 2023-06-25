@@ -10,6 +10,7 @@
  */
 
 use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+use YahnisElsts\WpDependencyWrapper\ScriptDependency;
 
 define('AME_RC_ONLY_CUSTOM', 1);
 
@@ -67,6 +68,10 @@ class wsMenuEditorExtras {
 
 		add_action('admin_menu_editor-menu_merged', array($this, 'on_menu_merged'), 10, 1);
 		add_action('admin_menu_editor-menu_built', array($this, 'on_menu_built'), 10, 2);
+
+		//Trigger a custom JS event when the admin menu element is ready.
+		//This is used by some Pro features to avoid FOUC.
+		add_action('in_admin_header', array($this, 'output_menu_ready_trigger'));
 
 		//Add some extra shortcodes of our own
 		$shortcode_callback = array($this, 'handle_shortcode');
@@ -160,12 +165,6 @@ class wsMenuEditorExtras {
 		if ( $this->wp_menu_editor->get_plugin_option('plugins_page_allowed_user_id') !== null ) {
 			add_filter('all_plugins', array($this, 'filter_plugin_list'));
 		}
-
-		/**
-		 * Menu color scheme generation.
-		 */
-		add_filter('ame_pre_set_custom_menu', array($this, 'add_menu_color_css'));
-		add_action('wp_ajax_ame_output_menu_color_css', array($this,'ajax_output_menu_color_css') );
 
 		//FontAwesome icons.
 		add_filter('custom_admin_menu', array($this, 'add_menu_fa_icon'), 10, 1);
@@ -1128,8 +1127,7 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 		?>
 		<div class="ws_sidebar_button_separator"></div>
 
-		<input type="button" id='ws_edit_global_colors' value="Colors" class="button ws_main_button" title="Edit default menu colors" />
-		<input type="button" id='ws_edit_separator_styles' value="Separators" class="button ws_main_button" title="Edit menu separator appearance" />
+		<input type="button" id='ws_edit_menu_styles' value="Style" class="button ws_main_button" title="Customize admin menu appearance" />
 		<input type="button" id='ws_edit_heading_styles' value="Headings" class="button ws_main_button" title="Edit the appearance of menu headings" />
 
 		<div class="ws_sidebar_button_separator"></div>
@@ -1202,14 +1200,31 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 		wp_register_auto_versioned_script(
 			'ame-ko-extensions',
 			plugins_url('extras/ko-extensions.js', $this->wp_menu_editor->plugin_file),
-			array('knockout', 'jquery', 'jquery-ui-dialog', 'ame-lodash', 'wp-color-picker')
+			array(
+				'ame-knockout', 'jquery', 'jquery-ui-dialog', 'ame-lodash', 'wp-color-picker',
+				'ame-mini-functional-lib'
+			)
+		);
+		wp_register_auto_versioned_script(
+			'ame-pro-common-lib',
+			plugins_url('extras/pro-common-lib.js', $this->wp_menu_editor->plugin_file),
+			array('ame-knockout')
 		);
 		wp_register_auto_versioned_script(
 			'ame-menu-heading-settings',
 			plugins_url('extras/menu-headings/menu-headings.js', $this->wp_menu_editor->plugin_file),
-			array('jquery', 'knockout', 'jquery-ui-dialog', 'wp-color-picker', 'ame-lodash', 'ame-ko-extensions',),
+			array(
+				'jquery', 'ame-knockout', 'jquery-ui-dialog', 'wp-color-picker', 'ame-lodash',
+				'ame-ko-extensions', 'ame-mini-functional-lib'
+			),
 			true
 		);
+
+		ScriptDependency::create(
+			plugins_url('extras/jszip/jszip.min.js', $this->wp_menu_editor->plugin_file),
+			'ame-jszip',
+			__DIR__ . '/extras/jszip/jszip.min.js'
+		)->register();
 	}
 
 	/**
@@ -1635,6 +1650,17 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 		$virtual_caps = $wp_menu_editor->get_virtual_caps($this->wp_menu_editor->virtual_cap_mode);
 		$grant_key = 'role:' . $role_id;
 		if ( isset($virtual_caps[$grant_key]) ) {
+			//Prevent a crash if $capabilities is not an array. Technically, WordPress docs
+			//say it's always an array, but I've received a report where it was NULL for
+			//a custom role. Let's be safe and check.
+			if ( !is_array($capabilities) ) {
+				if ( empty($capabilities) ) {
+					$capabilities = array();
+				} else {
+					$capabilities = (array)$capabilities;
+				}
+			}
+
 			$capabilities = array_merge($capabilities, $virtual_caps[$grant_key]);
 		}
 
@@ -2027,8 +2053,6 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 			} else {
 				add_action('admin_enqueue_scripts', array($this, 'enqueue_third_level_script'));
 			}
-
-			add_action('in_admin_header', array($this, 'output_menu_ready_trigger'));
 		}
 	}
 
@@ -2052,191 +2076,12 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 	}
 
 	/**
-	 * Generate CSS rules for menu items that have user-defined colors.
-	 *
-	 * This method stores the CSS at the "color_css" key in the menu structure and returns a modified menu.
-	 * By storing the color scheme CSS in the menu itself we avoid having to regenerate it on every page load.
-	 * We also don't have to worry about cache lifetime - when the menu is modified the old CSS will be
-	 * overwritten automatically.
-	 *
-	 * @param array $custom_menu Admin menu in the internal format.
-	 * @return array Modified menu.
-	 */
-	public function add_menu_color_css($custom_menu) {
-		if ( empty($custom_menu) || !is_array($custom_menu) || !isset($custom_menu['tree']) ) {
-			return $custom_menu;
-		}
-
-		if (!class_exists('ameMenuColorGenerator')) {
-			require_once dirname(__FILE__) . '/extras/menu-color-generator.php';
-		}
-		$generator = new ameMenuColorGenerator();
-
-		$css = array();
-		$used_ids = array();
-		$colorized_menu_count = 0;
-
-		$global_icon_colors = null;
-
-		//Include global colors, if any.
-		if ( isset($custom_menu['color_presets']['[global]']) ) {
-			$base_css = $generator->getCss(
-				'',
-				$custom_menu['color_presets']['[global]'],
-				array(),
-				dirname(__FILE__) . '/extras/global-menu-color-template.txt'
-			);
-			$css[] = $base_css;
-			$global_icon_colors = $generator->getIconColorScheme();
-		}
-
-		foreach($custom_menu['tree'] as &$item) {
-			if ( !isset($item['colors']) || empty($item['colors']) ) {
-				continue;
-			}
-			$colorized_menu_count++;
-
-			//Each item needs to have a unique ID so we can target it in CSS. Using a class would be cleaner,
-			//but the selectors wouldn't have enough specificity to override WP defaults.
-			$id = ameMenuItem::get($item, 'hookname');
-			if ( empty($id) || isset($used_ids[$id]) ) {
-				$id = (empty($id) ? 'ame-colorized-item' : $id) . '-';
-				$id .= $colorized_menu_count . '-t' . time();
-				$item['hookname'] = $id;
-			}
-			$used_ids[$id] = true;
-
-			$sub_type = ameMenuItem::get($item, 'sub_type');
-			if ( $sub_type === 'heading' ) {
-				$extra_selectors = array('.ame-menu-heading-item');
-			} else {
-				$extra_selectors = array();
-			}
-
-			$item_css = $generator->getCss($id, $item['colors'], $extra_selectors);
-			if ( !empty($item_css) ) {
-				$css[] = sprintf(
-					'/* %1$s (%2$s) */',
-					str_replace('*/', ' ', ameMenuItem::get($item, 'menu_title', 'Untitled menu')),
-					str_replace('*/', ' ', ameMenuItem::get($item, 'file', '(no URL)'))
-				);
-				$css[] = $item_css;
-			}
-		}
-
-		if ( !empty($css) ) {
-			$css = implode("\n", $css);
-			$custom_menu['color_css'] = $css;
-			$custom_menu['color_css_modified'] = time();
-			$custom_menu['icon_color_overrides'] = $global_icon_colors;
-		} else {
-			$custom_menu['color_css'] = '';
-			$custom_menu['color_css_modified'] = 0;
-			$custom_menu['icon_color_overrides'] = null;
-		}
-
-		return $custom_menu;
-	}
-
-	/**
-	 * Enqueue the user-defined menu color scheme, if any.
-	 */
-	public function enqueue_menu_color_style() {
-		try {
-			$custom_menu = $this->wp_menu_editor->load_custom_menu();
-		} catch (InvalidMenuException $e) {
-			//This exception is best handled elsewhere.
-			return;
-		}
-		if ( empty($custom_menu) || empty($custom_menu['color_css']) ) {
-			return;
-		}
-
-		wp_enqueue_style(
-			'ame-custom-menu-colors',
-			add_query_arg(
-				'ame_config_id',
-				$this->wp_menu_editor->get_loaded_menu_config_id(),
-				admin_url('admin-ajax.php?action=ame_output_menu_color_css')
-			),
-			array(),
-			$custom_menu['color_css_modified']
-		);
-
-		if ( isset($custom_menu['icon_color_overrides']) ) {
-			add_action('admin_head', array($this, 'override_menu_icon_color_scheme'), 9);
-		}
-	}
-
-	/**
-	 * Output menu color CSS for the current custom menu.
-	 */
-	public function ajax_output_menu_color_css() {
-		$config_id = null;
-		if ( isset($_GET['ame_config_id']) && !empty($_GET['ame_config_id']) ) {
-			$config_id = (string) ($_GET['ame_config_id']);
-		}
-
-		try {
-			$custom_menu = $this->wp_menu_editor->load_custom_menu($config_id);
-		} catch (InvalidMenuException $e) {
-			return;
-		}
-		if ( empty($custom_menu) || empty($custom_menu['color_css']) ) {
-			return;
-		}
-
-		header('Content-Type: text/css');
-		header('X-Content-Type-Options: nosniff'); //No really IE, it's CSS. Honest.
-
-		//Enable browser caching.
-		header('Cache-Control: public');
-		header('Expires: Thu, 31 Dec ' . date('Y', strtotime('+1 year')) . ' 23:59:59 GMT');
-		header('Pragma: cache');
-
-		echo $custom_menu['color_css'];
-		exit();
-	}
-
-	/**
-	 * Replace the icon colors in the current admin color scheme with the custom colors
-	 * set by the user. This is necessary to make SVG icons display in the right color.
-	 */
-	public function override_menu_icon_color_scheme() {
-		global $_wp_admin_css_colors;
-
-		$custom_menu = $this->wp_menu_editor->load_custom_menu();
-		if (!isset($custom_menu['icon_color_overrides'])) {
-			return;
-		}
-
-		$color_scheme = get_user_option('admin_color');
-		if ( empty( $_wp_admin_css_colors[ $color_scheme ] ) ) {
-			$color_scheme = 'fresh';
-		}
-
-		$custom_colors = array_merge(
-			array(
-				'base'    => '#a0a5aa',
-				'focus'   => '#00a0d2',
-				'current' => '#fff',
-			),
-			$custom_menu['icon_color_overrides']
-		);
-
-		if ( isset($_wp_admin_css_colors[$color_scheme]) ) {
-			$_wp_admin_css_colors[$color_scheme]->icon_colors = $custom_colors;
-		}
-	}
-
-	/**
 	 * Enqueue various dependencies on all admin pages.
 	 *
 	 * It seems inelegant for one plugin to have a dozen different "admin_print_scripts" hooks
 	 * (and it might hurt performance), so I've combined some of them into this method.
 	 */
 	public function enqueue_dashboard_deps() {
-		$this->enqueue_menu_color_style();
 		$this->enqueue_fontawesome();
 
 		wp_enqueue_auto_versioned_style(
@@ -2522,7 +2367,7 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 			'requiredPhpVersion' => '5.3.6',
 			'title' => 'Role Editor',
 		);
-		
+
 		$modules['tweaks'] = array(
 			'path' => AME_ROOT_DIR . '/extras/modules/tweaks/tweaks.php',
 			'className'    => 'ameTweakManager',
@@ -2531,11 +2376,59 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 		);
 
 		$modules['separator-styles'] = array(
-			'path' => AME_ROOT_DIR . '/extras/modules/separator-styles/ameMenuSeparatorStyler.php',
-			'className'    => 'ameMenuSeparatorStyler',
+			'path' => AME_ROOT_DIR . '/extras/modules/separator-styles/MenuSeparatorStyler.php',
+			'className'    => 'YahnisElsts\\AdminMenuEditor\\MenuSeparatorStyles\\MenuSeparatorStyler',
 			'title'        => 'Custom menu separator styles',
 			'requiredPhpVersion' => '5.6',
 		);
+
+		$modules['menu-styler'] = array(
+			'path'               => AME_ROOT_DIR . '/extras/modules/menu-styler/menu-styler.php',
+			'className'          => 'YahnisElsts\\AdminMenuEditor\\MenuStyler\\MenuStyler',
+			'title'              => 'Admin Menu Styles',
+			'requiredPhpVersion' => '5.6',
+			'isAlwaysActive'     => true,
+		);
+
+		if (defined('AME_CUSTOMIZABLE_DEV') && AME_CUSTOMIZABLE_DEV) {
+			$modules['admin-customizer'] = [
+				'path'               => AME_ROOT_DIR . '/extras/modules/admin-customizer/admin-customizer.php',
+				'className'          => 'YahnisElsts\\AdminMenuEditor\\AdminCustomizer\\AmeAdminCustomizer',
+				'title'              => 'Admin Customizer',
+				'requiredPhpVersion' => '5.6',
+			];
+
+			$modules['admin-theme-builder'] = [
+				'path'               => AME_ROOT_DIR . '/extras/modules/dashboard-styler/dashboard-styler.php',
+				'className'          => 'YahnisElsts\\AdminMenuEditor\\DashboardStyler\\DashboardStyler',
+				'title'              => 'Dashboard Styler',
+				'requiredPhpVersion' => '5.6',
+			];
+		}
+
+		$modules['menu-colors'] = array(
+			'path'               => AME_ROOT_DIR . '/extras/modules/admin-menu-colors/admin-menu-colors.php',
+			'className'          => '\\YahnisElsts\\AdminMenuEditor\\AdminMenuColors\\MenuColorsModule',
+			'title'              => 'Admin Menu Colors',
+			'requiredPhpVersion' => '5.6',
+			'isAlwaysActive'     => true,
+		);
+
+		if (defined('AME_CUSTOMIZABLE_DEV') && AME_CUSTOMIZABLE_DEV) {
+			$modules['sample-module'] = [
+				'path'               => AME_ROOT_DIR . '/extras/customizables/SampleModule.php',
+				'className'          => '\\YahnisElsts\\AdminMenuEditor\\Customizable\\Design\\SampleModule',
+				'title'              => 'Sample Module',
+				'requiredPhpVersion' => '5.6',
+			];
+
+			$modules['ko-customizable-dev'] = [
+				'path'               => AME_ROOT_DIR . '/extras/modules/ko-customizable-dev/ko-customizable-dev.php',
+				'className'          => '\\YahnisElsts\\AdminMenuEditor\\KoCustomizableDev\\AmeKoCustomizableDevModule',
+				'title'              => 'Knockout Prototyping Module',
+				'requiredPhpVersion' => '5.6',
+			];
+		}
 
 		return $modules;
 	}

@@ -18,11 +18,11 @@ class AmeSuperUsers {
 	public addButtonText: string = 'Add User';
 	public isInfoBoxOpen: KnockoutComputed<boolean>;
 
-	constructor(settings) {
+	constructor(settings: any) {
 		this.userEditUrl = settings.userEditUrl;
 		this.currentUserLogin = settings.currentUserLogin;
 
-		this.superUsers = ko.observableArray([]);
+		this.superUsers = ko.observableArray([] as AmeUser[]);
 		AmeSuperUsers._.forEach(settings.superUsers, (userDetails) => {
 			var user = AmeUser.createFromProperties(userDetails);
 			if (!AmeActors.getUser(user.userLogin)) {

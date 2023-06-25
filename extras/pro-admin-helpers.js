@@ -2,21 +2,21 @@
 ///<reference path="../js/jquery.biscuit.d.ts"/>
 'use strict';
 (function ($) {
-    var isHeadingStateRestored = false;
+    let isHeadingStateRestored = false;
     function setCollapsedState($heading, isCollapsed) {
         $heading.toggleClass('ame-is-collapsed-heading', isCollapsed);
         //Show/hide all menu items between this heading and the next one.
-        var containedItems = $heading.nextUntil('li.ame-menu-heading-item, #collapse-menu', 'li.menu-top,li.wp-menu-separator');
+        const containedItems = $heading.nextUntil('li.ame-menu-heading-item, #collapse-menu', 'li.menu-top,li.wp-menu-separator');
         containedItems.toggle(!isCollapsed);
     }
     /**
      * Save the collapsed/expanded state of menu headings.
      */
     function saveCollapsedHeadings($adminMenu) {
-        var collapsedHeadings = loadCollapsedHeadings();
-        var currentTime = Date.now();
+        let collapsedHeadings = loadCollapsedHeadings();
+        const currentTime = Date.now();
         $adminMenu.find('li[id].ame-collapsible-heading').each(function () {
-            var $heading = $(this), id = $heading.attr('id');
+            const $heading = $(this), id = $heading.attr('id');
             if (id) {
                 if ($heading.hasClass('ame-is-collapsed-heading')) {
                     collapsedHeadings[id] = currentTime;
@@ -29,10 +29,10 @@
         //Discard stored data associated with headings that haven't been seen in a long time.
         //It's likely that the headings no longer exist.
         if (Object.keys) {
-            var threshold = currentTime - (90 * 24 * 3600 * 1000);
-            var headingIds = Object.keys(collapsedHeadings);
-            for (var i = 0; i < headingIds.length; i++) {
-                var id = headingIds[i];
+            const threshold = currentTime - (90 * 24 * 3600 * 1000);
+            let headingIds = Object.keys(collapsedHeadings);
+            for (let i = 0; i < headingIds.length; i++) {
+                const id = headingIds[i];
                 if (!collapsedHeadings.hasOwnProperty(id)) {
                     continue;
                 }
@@ -44,12 +44,12 @@
         $.cookie('ame-collapsed-menu-headings', JSON.stringify(collapsedHeadings), { expires: 90 });
     }
     function loadCollapsedHeadings() {
-        var defaultValue = {};
+        let defaultValue = {};
         if (!$.cookie) {
             return defaultValue;
         }
         try {
-            var settings = JSON.parse($.cookie('ame-collapsed-menu-headings'));
+            let settings = JSON.parse($.cookie('ame-collapsed-menu-headings'));
             if (typeof settings === 'object') {
                 return settings;
             }
@@ -64,13 +64,13 @@
      */
     function restoreCollapsedHeadings() {
         isHeadingStateRestored = true;
-        var previouslyCollapsedHeadings = loadCollapsedHeadings();
-        var $adminMenu = $('#adminmenumain #adminmenu');
-        for (var id in previouslyCollapsedHeadings) {
+        const previouslyCollapsedHeadings = loadCollapsedHeadings();
+        const $adminMenu = $('#adminmenumain #adminmenu');
+        for (let id in previouslyCollapsedHeadings) {
             if (!previouslyCollapsedHeadings.hasOwnProperty(id)) {
                 continue;
             }
-            var $heading = $adminMenu.find('#' + id);
+            const $heading = $adminMenu.find('#' + id);
             if ($heading.length > 0) {
                 setCollapsedState($heading, true);
             }
@@ -83,19 +83,19 @@
     });
     jQuery(function ($) {
         //Menu headings: Handle clicks.
-        var $adminMenu = $('#adminmenumain #adminmenu');
+        const $adminMenu = $('#adminmenumain #adminmenu');
         $adminMenu.find('li.ame-menu-heading-item a').on('click', function () {
-            var $heading = $(this).closest('li');
-            var canBeCollapsed = $heading.hasClass('ame-collapsible-heading');
+            const $heading = $(this).closest('li');
+            const canBeCollapsed = $heading.hasClass('ame-collapsible-heading');
             if (!canBeCollapsed) {
                 //By default, do nothing. The heading is implemented as a link due to how the admin menu
                 //works, but we don't want it to go to a different URL on click.
                 return false;
             }
-            var isCollapsed = !$heading.hasClass('ame-is-collapsed-heading');
+            let isCollapsed = !$heading.hasClass('ame-is-collapsed-heading');
             setCollapsedState($heading, isCollapsed);
             //Remember the collapsed/expanded state.
-            if ($.cookie) {
+            if (typeof $.cookie !== 'undefined') {
                 setTimeout(saveCollapsedHeadings.bind(window, $adminMenu), 50);
             }
             return false;
@@ -108,39 +108,39 @@
         }
         //Menu headings: If the user hasn't specified a custom text color, make sure the color
         //doesn't change on hover/focus.
-        if (wsAmeProAdminHelperData.setHeadingHoverColor && Array.prototype.map) {
-            var baseTextColor = void 0;
+        if (wsAmeProAdminHelperData.setHeadingHoverColor && (typeof Array.prototype.map !== 'undefined')) {
+            let baseTextColor;
             //Look at the first N menu items to discover the default text color.
-            var $menus = $('#adminmenumain #adminmenu li.menu-top')
+            const $menus = $('#adminmenumain #adminmenu li.menu-top')
                 .not('.wp-menu-separator')
                 .not('.ame-menu-heading-item')
                 .slice(0, 10)
                 .find('> a .wp-menu-name');
-            var mostCommonColor_1 = '#eeeeee', seenColors_1 = {};
-            seenColors_1[mostCommonColor_1] = 0;
+            let mostCommonColor = '#eeeeee', seenColors = {};
+            seenColors[mostCommonColor] = 0;
             $menus.each(function () {
-                var color = $(this).css('color');
+                const color = $(this).css('color');
                 if (color) {
-                    if (seenColors_1.hasOwnProperty(color)) {
-                        seenColors_1[color] = seenColors_1[color] + 1;
+                    if (seenColors.hasOwnProperty(color)) {
+                        seenColors[color] = seenColors[color] + 1;
                     }
                     else {
-                        seenColors_1[color] = 1;
+                        seenColors[color] = 1;
                     }
-                    if (seenColors_1[color] > seenColors_1[mostCommonColor_1]) {
-                        mostCommonColor_1 = color;
+                    if (seenColors[color] > seenColors[mostCommonColor]) {
+                        mostCommonColor = color;
                     }
                 }
             });
-            baseTextColor = mostCommonColor_1;
+            baseTextColor = mostCommonColor;
             //We want to override the default menu colors, but not per-item styles.
-            var parentSelector_1 = '#adminmenu li.ame-menu-heading-item';
-            var selectors = [':hover', ':active', ':focus', ' a:hover', ' a:active', ' a:focus'].map(function (suffix) {
-                return parentSelector_1 + suffix;
+            const parentSelector = '#adminmenu li.ame-menu-heading-item';
+            let selectors = [':hover', ':active', ':focus', ' a:hover', ' a:active', ' a:focus'].map(function (suffix) {
+                return parentSelector + suffix;
             });
-            var $newStyle = $('<style type="text/css">')
+            const $newStyle = $('<style type="text/css">')
                 .text(selectors.join(',\n') + ' { color: ' + baseTextColor + '; }');
-            var $adminCssNode = $('link#admin-menu-css').first();
+            const $adminCssNode = $('link#admin-menu-css').first();
             if ($adminCssNode.length === 1) {
                 $newStyle.insertAfter($adminCssNode);
             }

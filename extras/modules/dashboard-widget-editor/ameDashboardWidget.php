@@ -114,12 +114,20 @@ abstract class ameDashboardWidget {
 		return $this->location;
 	}
 
+	public function getOriginalLocation() {
+		return $this->getLocation();
+	}
+
 	public function getPriority() {
 		return $this->priority;
 	}
 
 	public function getCallback() {
 		return $this->callback;
+	}
+
+	public function getCallbackArgs() {
+		return $this->callbackArgs;
 	}
 
 	public function getGrantAccess() {
@@ -213,16 +221,20 @@ abstract class ameDashboardWidget {
 
 	/**
 	 * Register this widget with WordPress.
+	 *
+	 * @param bool $overrideOrder Whether to use the custom widget order settings if available.
 	 */
-	public function addToDashboard() {
+	public function addToDashboard($overrideOrder = false) {
 		add_meta_box(
 			$this->getId(),
 			$this->getTitle(),
 			$this->getCallback(),
 			'dashboard',
-			$this->getLocation(),
-			$this->getPriority(),
-			$this->callbackArgs
+			$overrideOrder ? $this->getLocation() : $this->getOriginalLocation(),
+			//To make widgets appear in the order they're added,
+			//use the same priority for all widgets.
+			$overrideOrder ? 'default' : $this->getPriority(),
+			$this->getCallbackArgs()
 		);
 	}
 }

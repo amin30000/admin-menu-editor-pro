@@ -268,7 +268,7 @@ class Wslm_LicenseServer {
 			return new WP_Error('not_found', 'You must specify a license key or a site token.', 400);
 		}
 
-		$license = $this->loadLicense($licenseKey, $token);
+		$license = $this->loadLicense($licenseKey, $token, true);
 		if ( empty($license) ) {
 			if ( !empty($token) ) {
 				return new WP_Error('not_found', 'Invalid site token.', 404);
@@ -311,7 +311,7 @@ class Wslm_LicenseServer {
 	 * @throws InvalidArgumentException
 	 * @return Wslm_ProductLicense|null A license object, or null if the license doesn't exist.
 	 */
-	public function loadLicense($licenseKeyOrId, $token = null) {
+	public function loadLicense($licenseKeyOrId, $token = null, $alwaysTreatAsKey = false) {
 		if ( !empty($token) ) {
 			$query = "SELECT licenses.*, tokens.site_url
 				 FROM
@@ -320,7 +320,11 @@ class Wslm_LicenseServer {
 				 	ON licenses.license_id = tokens.license_id
 				 WHERE tokens.token = ?";
 			$params = array($token);
-		} else if ( is_numeric($licenseKeyOrId) && (!is_string($licenseKeyOrId) || (strlen($licenseKeyOrId) < 13)) ) {
+		} else if (
+			is_numeric($licenseKeyOrId)
+			&& (!is_string($licenseKeyOrId) || (strlen($licenseKeyOrId) < 13))
+			&& (!$alwaysTreatAsKey)
+		) {
 			$query =
 				"SELECT licenses.* FROM `{$this->tablePrefix}licenses` AS licenses
 				 WHERE license_id = ?";
@@ -347,6 +351,10 @@ class Wslm_LicenseServer {
 			$license = null;
 		}
 		return $license;
+	}
+
+	public function loadLicenseByKey($licenseKey) {
+		return $this->loadLicense($licenseKey, null, true);
 	}
 
 	protected function loadLicenseSites($licenseId) {
@@ -534,7 +542,7 @@ class Wslm_LicenseServer {
 		);
 
 		//Reload the license to ensure it includes the changes we just made.
-		$license = $this->loadLicense($licenseKey);
+		$license = $this->loadLicenseByKey($licenseKey);
 
 		$response = array(
 			'site_token' => $token,
@@ -609,7 +617,7 @@ class Wslm_LicenseServer {
 			);
 
 			//Reload the license to ensure the site list is correct.
-			$license = $this->loadLicense($license['license_key']);
+			$license = $this->loadLicenseByKey($license['license_key']);
 			$response['license'] = $this->prepareLicenseForOutput($license, $usingToken);
 
 			$response = array_merge($response, array(

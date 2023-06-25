@@ -2,8 +2,8 @@
 Contributors: whiteshadow
 Tags: admin, dashboard, menu, security, wpmu
 Requires at least: 4.7
-Tested up to: 6.1
-Stable tag: 2.18.2
+Tested up to: 6.2
+Stable tag: 2.20
 
 Lets you directly edit the WordPress admin menu. You can re-order, hide or rename existing menus, add custom menus and more.
 
@@ -83,13 +83,65 @@ Here are some usage tips and other things that can be good to know when using th
 
 [Get the latest version here.](http://adminmenueditor.com/updates/)
 
+= 2.20 (2023-05-30) =
+##### Added
+* Added the ability to move dashboard widgets and override the number of dashboard columns. The custom dashboard layout can be enabled or disabled per role.
+* Added an "open links in a new tab" setting to custom RSS widgets.
+
+##### Fixed
+* Fixed a minor plugin conflict with "WPFunnels" and "Email Marketing Automation - Mail Mint" that caused hidden menu items created by those plugins to become visible when AME was activated.
+* Fixed a conflict with the "Fortress" plugin that could reportedly cause an infinite loop.
+* Fixed a conflict with "Da Reactions" 4.0.3 that triggered PHP warnings like "Warning: Array to string conversion in .../includes/menu-item.php on line 54".
+* Switched TypeScript to strict mode.
+
+= 2.19.3 (2023-04-24) =
+* Hotfix: Fixed another bug in the "full height layout" feature that pushed the right side of the Toolbar off the screen, potentially hiding the "Howdy, username" dropdown.
+
+= 2.19.2 (2023-04-24) =
+##### Fixed
+* Fixed a fatal error in the role editor and on "Settings -> Easy Hide" that could be triggered when a single admin menu item had multiple notification badges. In this context, "badge" refers to the colorful circles that WordPress uses to show things like the number of available updates and pending comments.
+* Fixed menu logo not showing up in certain configurations.
+* Fixed menu logo not being visible when the admin menu is collapsed and the logo has large horizontal margins/padding. The horizontal margins and padding will now be set to zero in this case.
+* Fixed the "Full height menu" option not working outside the preview unless menu width was also changed to a custom value.
+* Fixed a bug where changing the color settings of an individual menu item did not change the actual appearance of the item unless custom colors were also set for the admin menu as a whole.
+* Fixed a few PHP 8.1 deprecation notices related to implicit conversions from float to int.
+* Fixed color settings generating invalid CSS rules when the setting value is an empty string.
+* When the popup slider is shown above an input because there is not enough space below, the triangular tip should now appear below the popup (i.e. pointing towards the input), not above it.
+
+##### Changed
+* Updated the popup slider ranges for more reasonable box shadow settings.
+
+= 2.19.1 (2023-03-28) =
+##### Fixed
+* Fixed the error "Undefined index: menu_styles in ...menu-styler.php". This could show up either as a PHP warning or as a notice depending on the PHP version.
+
+= 2.19 (2023-03-27) =
+##### Added
+* Added many new admin menu customization settings. This includes: menu width, menu bar shadow, item font size and style, item margins and padding, full-height menu option, custom logo above the admin menu, custom "collapse" button text, and so on. To access these settings, click the "Style" button in the menu editor sidebar. 
+
+##### Fixed
+* Fixed a minor conflict with the WPForms plugin where the hidden menu item "Dashboard -> Welcome to WPForms" became visible when Admin Menu Editor was installed.
+* Fixed a conflict with Toolset Types 3.4.7 that prevented redirect settings from being saved.
+* Fixed a PHP warning triggered when a menu item didn't have a URL or a required capability.
+* Fixed a plugin visibility bug where, if none of the user's roles had custom access settings for a specific plugin or in general, AME would immediately deny access instead of also checking user capabilities. This could theoretically happen if all the user's roles were new or if the user didn't have any roles (they might still have access due to directly granted capabilities).
+* Fixed a fatal error ("array_merge(): Argument #1 must be of type array") and multiple warnings that were caused by third-party roles that had an invalid capability list. The list should be an `array`, but for some custom roles it is apparently `null` or `false`.
+* Prevented a potential fatal error if JSON-encoded module settings stored in the database have been corrupted and can't be decoded.
+* Fixed a bug where changing the title of a dashboard widget did not change the title shown in the "Screen Options" panel.
+* Fixed PHP notice about enqueueing the "wp-editor" script incorrectly. The notice only appeared on the "Appearance -> Widgets" page.
+* Fixed the "Hide the Gutenberg options menu" setting not working in recent WP versions.
+* Added some missing `.map` files that could cause 404 errors for users looking at the developer console.
+
+##### Changed
+* The "Separators" and "Colors" buttons were removed from the menu editor and the corresponding settings were moved to the new "Style" screen.
+* Lots of internal reorganization.
+* Tested up to WP 6.2.
+
 = 2.18.1 (2022-11-01) =
 ##### Fixed
 * Fixed multiple nested submenu layout issues that showed up when the admin menu was in the folded/collapsed state.
 
 ##### Changed
 * Tested up to WP 6.1.
-
 
 = 2.18 (2022-08-30) =
 ##### Requirements

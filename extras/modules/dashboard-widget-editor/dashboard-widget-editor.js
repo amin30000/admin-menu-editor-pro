@@ -1,3 +1,4 @@
+"use strict";
 /// <reference path="../../../js/knockout.d.ts" />
 /// <reference path="../../../js/jquery.d.ts" />
 /// <reference path="../../../js/jqueryui.d.ts" />
@@ -5,32 +6,106 @@
 /// <reference path="../../../js/lodash-3.10.d.ts" />
 /// <reference path="./dashboard-widget.ts" />
 /// <reference path="../../../modules/actor-selector/actor-selector.ts" />
-var AmeDashboardWidgetEditor = /** @class */ (function () {
-    function AmeDashboardWidgetEditor(widgetSettings, selectedActor, isMultisite) {
-        if (selectedActor === void 0) { selectedActor = null; }
-        if (isMultisite === void 0) { isMultisite = false; }
-        var _this = this;
+let ameWidgetEditor;
+class AmeDashboardWidgetEditor {
+    constructor(widgetSettings, selectedActor = null, isMultisite = false, initialPreviewColumns = 1) {
+        var _a, _b;
+        this.welcomePanel = null;
+        this.maxDashboardColumns = 4;
+        this.initialWidgetSettings = null;
         this.isMultisite = false;
         this.newWidgetCounter = 0;
+        this.forcedColumnStrategyOptions = [
+            { value: null, label: 'Always' }
+        ];
         this.isMultisite = isMultisite;
         this.actorSelector = new AmeActorSelector(AmeActors, true);
         //Wrap the selected actor in a computed observable so that it can be used with Knockout.
-        var _selectedActor = ko.observable(this.actorSelector.selectedActor);
-        this.selectedActor = ko.computed({
-            read: function () {
-                return _selectedActor();
-            },
-            write: function (newActor) {
-                _this.actorSelector.setSelectedActor(newActor);
-            }
-        });
-        this.actorSelector.onChange(function (newSelectedActor) {
-            _selectedActor(newSelectedActor);
-        });
+        this.selectedActor = this.actorSelector.createKnockoutObservable(ko);
         //Re-select the previously selected actor, or select "All" (null) by default.
         this.selectedActor(selectedActor);
-        this.widgets = ko.observableArray([]);
+        const selectedActorObject = this.actorSelector.createActorObservable(ko);
+        this.widgetColumns = [];
+        for (let i = 0; i < this.maxDashboardColumns; i++) {
+            this.widgetColumns.push(ko.observableArray([]));
+        }
+        //Widget order settings.
+        const defaultOrderOverride = ko.observable(widgetSettings.defaultOrderOverrideEnabled || false);
+        this.isDefaultOrderOverrideEnabled = ko.computed({
+            read: () => defaultOrderOverride(),
+            write: (newDefaultOrderOverride) => {
+                //Coerce the value to a boolean. Knockout could pass in a string.
+                defaultOrderOverride(!!newDefaultOrderOverride);
+            }
+        });
+        const layoutOverrideStrategy = new AmeActorFeatureStrategy({
+            roleCombinationMode: AmeRoleCombinationMode.Some,
+            noValueDefault: false,
+            getSelectedActor: selectedActorObject,
+            getAllActors: () => this.actorSelector.getVisibleActors(),
+        });
+        this.actorOrderOverride = new AmeActorFeatureState(new AmeObservableActorFeatureMap(widgetSettings.orderOverridePerActor), layoutOverrideStrategy);
+        //Column layout settings.
+        this.forcedColumnCount = ko.observable((_a = widgetSettings.forcedColumnCount) !== null && _a !== void 0 ? _a : null);
+        this.forcedColumnStrategy = ko.observable((_b = widgetSettings.forcedColumnStrategy) !== null && _b !== void 0 ? _b : null);
+        this.actorForcedColumns = new AmeActorFeatureState(new AmeObservableActorFeatureMap(widgetSettings.forcedColumnsEnabledPerActor), layoutOverrideStrategy);
+        this.forcedColumnSelectorOptions = [{ value: null, label: 'Leave unchanged' }];
+        for (let i = 1; i <= this.maxDashboardColumns; i++) {
+            this.forcedColumnSelectorOptions.push({
+                value: i,
+                label: i + ' column' + (i > 1 ? 's' : '')
+            });
+        }
+        const breakpoints = [600, 768, 800, 992, 1200, 1400, 1500, 1800];
+        for (let i = 0; i < breakpoints.length; i++) {
+            this.forcedColumnStrategyOptions.push({
+                value: breakpoints[i],
+                label: 'Screen size ≥' + breakpoints[i] + 'px'
+            });
+        }
+        this.previewColumnOptions = [];
+        for (let i = 1; i <= this.maxDashboardColumns; i++) {
+            this.previewColumnOptions.push(i);
+        }
         this.loadSettings(widgetSettings);
+        const previewColumnCount = ko.observable(typeof initialPreviewColumns === 'string'
+            ? parseInt(initialPreviewColumns, 10)
+            : initialPreviewColumns);
+        this.desiredPreviewColumnCount = ko.computed({
+            read: () => previewColumnCount(),
+            write: (newColumnCount) => {
+                if (newColumnCount < 1 || newColumnCount > this.widgetColumns.length) {
+                    throw { message: 'Invalid column count: ' + newColumnCount };
+                }
+                previewColumnCount(newColumnCount);
+            }
+        });
+        this.columnLayout = ko.computed(() => {
+            const singleColumnLayout = [[1, 2, 3, 4]];
+            //These are based on how WordPress 6.2 lays out the dashboard
+            //widget columns using floats.
+            switch (this.desiredPreviewColumnCount()) {
+                case 1:
+                    return singleColumnLayout;
+                case 2:
+                    return [[1], [2, 3, 4]];
+                case 3:
+                    return [[1], [2], [3, 4]];
+                case 4:
+                    return [[1], [2], [3], [4]];
+            }
+            return singleColumnLayout;
+        });
+        this.toggleLabelForSelectedActor = ko.computed(() => {
+            const actor = selectedActorObject();
+            if (actor === null) {
+                return 'Enable for all users';
+            }
+            if (actor.isUser()) {
+                return 'Enable for the selected user';
+            }
+            return 'Enable for the selected role';
+        });
         //These are only updated when saving or exporting widget settings.
         this.widgetData = ko.observable('');
         this.widgetDataLength = ko.observable(0);
@@ -41,15 +116,18 @@ var AmeDashboardWidgetEditor = /** @class */ (function () {
         this.importErrorHttpCode = ko.observable(0);
         this.importErrorMessage = ko.observable('');
         this.importErrorResponse = ko.observable('');
-        this.setupImportDialog();
+        this.importDialog = this.setupImportDialog();
     }
-    AmeDashboardWidgetEditor.prototype.loadSettings = function (widgetSettings) {
-        var _ = AmeDashboardWidgetEditor._;
-        this.widgets.removeAll();
+    loadSettings(widgetSettings) {
+        var _a;
+        const _ = AmeDashboardWidgetEditor._;
+        for (let i = 0; i < this.widgetColumns.length; i++) {
+            this.widgetColumns[i].removeAll();
+        }
         this.welcomePanel = new AmeWelcomeWidget(_.get(widgetSettings, 'welcomePanel', {}), this);
-        this.widgets.push(this.welcomePanel);
-        for (var i = 0; i < widgetSettings.widgets.length; i++) {
-            var properties = widgetSettings.widgets[i], widget = null;
+        this.widgetColumns[0].push(this.welcomePanel);
+        for (let i = 0; i < widgetSettings.widgets.length; i++) {
+            let properties = widgetSettings.widgets[i], widget = null;
             if (properties.hasOwnProperty('wrappedWidget')) {
                 widget = new AmeStandardWidgetWrapper(properties, this);
             }
@@ -68,143 +146,207 @@ var AmeDashboardWidgetEditor = /** @class */ (function () {
             if (!this.isMultisite && !widget.isPresent && AmeDashboardWidgetEditor.autoCleanupEnabled) {
                 continue;
             }
-            this.widgets.push(widget);
+            const columnIndex = (_a = AmeDashboardWidget.locationToColumnMap[widget.location()]) !== null && _a !== void 0 ? _a : 0;
+            this.widgetColumns[columnIndex].push(widget);
             //The custom ID counter should be high enough not to clash with existing widgets.
             if (widget.id.indexOf(AmeDashboardWidgetEditor.customIdPrefix) === 0) {
-                var idNum = parseInt(widget.id.substr(AmeDashboardWidgetEditor.customIdPrefix.length), 10);
+                let idNum = parseInt(widget.id.substring(AmeDashboardWidgetEditor.customIdPrefix.length), 10);
                 if (!isNaN(idNum)) {
                     this.newWidgetCounter = Math.max(idNum, this.newWidgetCounter);
                 }
             }
         }
         this.initialWidgetSettings = widgetSettings;
-    };
+    }
+    getColumnContents(columnNumber) {
+        const columnIndex = columnNumber - 1;
+        if (columnIndex < 0 || columnIndex >= this.widgetColumns.length) {
+            throw { message: 'Invalid column index', columnIndex: columnIndex };
+        }
+        return this.widgetColumns[columnIndex];
+    }
+    isColumnEmpty(columnNumber) {
+        const columnIndex = columnNumber - 1;
+        if (columnIndex >= 0 && (columnIndex < this.widgetColumns.length)) {
+            return this.widgetColumns[columnIndex]().length === 0;
+        }
+        return false;
+    }
+    onBeforeMoveWidget(args) {
+        const firstColumn = this.widgetColumns[0];
+        //The "Welcome" widget should always be the first item in the first column.
+        if (args.item === this.welcomePanel) {
+            if ((args.targetParent !== firstColumn) || (args.targetIndex !== 0)) {
+                args.cancelDrop = true;
+                return;
+            }
+        }
+        else {
+            //Because the "Welcome" widget is always first, other widgets can't be
+            //moved to the top of the first column.
+            if ((args.targetParent === firstColumn) && (args.targetIndex === 0)) {
+                args.cancelDrop = true;
+                return;
+            }
+        }
+    }
+    onAfterMoveWidget(args) {
+        //When a widget is moved to a different column, update its location.
+        if ((args.sourceParent !== args.targetParent) && (args.item instanceof AmeDashboardWidget)) {
+            const columnIndex = this.widgetColumns.indexOf(args.targetParent);
+            if (columnIndex >= 0) {
+                if (typeof AmeDashboardWidget.columnToLocationMap[columnIndex] === 'string') {
+                    const widget = args.item;
+                    widget.location(AmeDashboardWidget.columnToLocationMap[columnIndex]);
+                }
+            }
+        }
+    }
     // noinspection JSUnusedGlobalSymbols Used in Knockout templates.
-    AmeDashboardWidgetEditor.prototype.removeWidget = function (widget, event) {
-        var _this = this;
-        jQuery(event.target).closest('.ame-dashboard-widget').slideUp(300, function () {
-            _this.widgets.remove(widget);
+    removeWidget(widget, event) {
+        if (!event.target) {
+            return;
+        }
+        jQuery(event.target).closest('.ame-dashboard-widget').slideUp(300, () => {
+            for (let i = 0; i < this.widgetColumns.length; i++) {
+                this.widgetColumns[i].remove(widget);
+            }
         });
-    };
+    }
     // noinspection JSUnusedGlobalSymbols Used in Knockout templates.
-    AmeDashboardWidgetEditor.prototype.addHtmlWidget = function () {
+    addHtmlWidget() {
         this.newWidgetCounter++;
-        var widget = new AmeCustomHtmlWidget({
+        let widget = new AmeCustomHtmlWidget({
             id: AmeDashboardWidgetEditor.customIdPrefix + this.newWidgetCounter,
             title: 'New Widget ' + this.newWidgetCounter
         }, this);
         //Expand the new widget.
         widget.isOpen(true);
         this.insertAfterWelcomePanel(widget);
-    };
+    }
     // noinspection JSUnusedGlobalSymbols Used in Knockout templates.
-    AmeDashboardWidgetEditor.prototype.addRssWidget = function () {
+    addRssWidget() {
         this.newWidgetCounter++;
-        var widget = new AmeCustomRssWidget({
+        let widget = new AmeCustomRssWidget({
             id: AmeDashboardWidgetEditor.customIdPrefix + this.newWidgetCounter,
             title: 'New RSS Widget ' + this.newWidgetCounter
         }, this);
         //Expand the new widget.
         widget.isOpen(true);
         this.insertAfterWelcomePanel(widget);
-    };
-    AmeDashboardWidgetEditor.prototype.insertAfterWelcomePanel = function (widget) {
+    }
+    insertAfterWelcomePanel(widget) {
+        //The "Welcome" panel should always be in the first column. It can't be moved.
+        const firstColumn = this.widgetColumns[0];
         //The "Welcome" panel is always first, so we can cheat for performance.
-        if (this.widgets.indexOf(this.welcomePanel) === 0) {
-            var welcomePanel = this.widgets.shift();
-            this.widgets.unshift(widget);
-            this.widgets.unshift(welcomePanel);
+        if (this.welcomePanel && (firstColumn.indexOf(this.welcomePanel) === 0)) {
+            let welcomePanel = firstColumn.shift();
+            firstColumn.unshift(widget);
+            firstColumn.unshift(welcomePanel);
         }
         else {
             //But just in case it's not first for some odd reason,
             //let's fall back to inserting the widget at the beginning.
-            this.widgets.unshift(widget);
+            firstColumn.unshift(widget);
         }
-    };
+    }
     // noinspection JSUnusedGlobalSymbols Used in Knockout templates.
-    AmeDashboardWidgetEditor.prototype.saveChanges = function () {
-        var settings = this.getCurrentSettings();
+    saveChanges() {
+        let settings = this.getCurrentSettings();
         //Set the hidden form fields.
         this.widgetData(JSON.stringify(settings));
         this.widgetDataLength(this.widgetData().length);
         //Submit the form.
         return true;
-    };
-    AmeDashboardWidgetEditor.prototype.getCurrentSettings = function () {
-        var collectionFormatName = 'Admin Menu Editor dashboard widgets';
-        var collectionFormatVersion = '1.1';
-        var _ = AmeDashboardWidgetEditor._;
-        var settings = {
+    }
+    getCurrentSettings() {
+        var _a, _b, _c, _d;
+        const collectionFormatName = 'Admin Menu Editor dashboard widgets';
+        const collectionFormatVersion = '1.1';
+        const _ = AmeDashboardWidgetEditor._;
+        let settings = {
             format: {
                 name: collectionFormatName,
                 version: collectionFormatVersion
             },
             widgets: [],
             welcomePanel: {
-                grantAccess: _.pick(this.welcomePanel.grantAccess.getAll(), function (hasAccess, actorId) {
+                grantAccess: _.pick((_b = (_a = this.welcomePanel) === null || _a === void 0 ? void 0 : _a.grantAccess.getAll()) !== null && _b !== void 0 ? _b : {}, function (hasAccess, actorId) {
+                    if (typeof actorId === 'undefined') {
+                        return false; //This should never happen in practice.
+                    }
                     //Remove "allow" settings for actors that can't actually see the panel.
                     return AmeActors.hasCapByDefault(actorId, 'edit_theme_options') || !hasAccess;
                 }),
             },
-            siteComponentHash: this.initialWidgetSettings.siteComponentHash
+            defaultOrderOverrideEnabled: this.isDefaultOrderOverrideEnabled(),
+            orderOverridePerActor: this.actorOrderOverride.toJs(),
+            forcedColumnCount: this.forcedColumnCount(),
+            forcedColumnStrategy: this.forcedColumnStrategy(),
+            forcedColumnsEnabledPerActor: this.actorForcedColumns.toJs(),
+            siteComponentHash: (_d = (_c = this.initialWidgetSettings) === null || _c === void 0 ? void 0 : _c.siteComponentHash) !== null && _d !== void 0 ? _d : 'initial-settings-not-initialized',
+            //Unix timestamp in seconds.
+            lastModified: Math.floor(Date.now() / 1000)
         };
-        _.forEach(_.without(this.widgets(), this.welcomePanel), function (widget) {
-            settings.widgets.push(widget.toPropertyMap());
-        });
+        for (let i = 0; i < this.widgetColumns.length; i++) {
+            _.forEach(_.without(this.widgetColumns[i](), this.welcomePanel), function (widget) {
+                if (widget !== null) {
+                    settings.widgets.push(widget.toPropertyMap());
+                }
+            });
+        }
         return settings;
-    };
+    }
     // noinspection JSUnusedGlobalSymbols Used in Knockout templates.
-    AmeDashboardWidgetEditor.prototype.exportWidgets = function () {
-        var _this = this;
+    exportWidgets() {
         //Temporarily disable the export button to prevent accidental repeated clicks.
         this.isExportButtonEnabled(false);
         this.widgetData(JSON.stringify(this.getCurrentSettings()));
         //Re-enable the export button after a few seconds.
-        window.setTimeout(function () {
-            _this.isExportButtonEnabled(true);
+        window.setTimeout(() => {
+            this.isExportButtonEnabled(true);
         }, 3000);
         //Explicitly allow form submission.
         return true;
-    };
-    AmeDashboardWidgetEditor.prototype.setupImportDialog = function () {
+    }
+    setupImportDialog() {
         //Note to self: Refactor this as a separate view-model, perhaps.
-        var _this = this;
-        this.importDialog = jQuery('#ame-import-widgets-dialog');
-        var importForm = this.importDialog.find('#ame-import-widgets-form');
-        this.importDialog.dialog({
+        const importDialog = jQuery('#ame-import-widgets-dialog');
+        let importForm = importDialog.find('#ame-import-widgets-form');
+        importDialog.dialog({
             autoOpen: false,
             modal: true,
             closeText: ' ',
-            open: function () {
+            open: () => {
                 importForm.resetForm();
-                _this.importState('start');
-                _this.uploadButtonEnabled(false);
+                this.importState('start');
+                this.uploadButtonEnabled(false);
             }
         });
         //jQuery moves the dialog to the end of the DOM tree, which puts it outside our KO root node.
         //This means we must apply bindings directly to the dialog node.
-        ko.applyBindings(this, this.importDialog.get(0));
+        ko.applyBindings(this, importDialog.get(0));
         //Enable the upload button only when the user selects a file.
-        importForm.find('#ame-import-file-selector').on('change', function (event) {
-            _this.uploadButtonEnabled(!!jQuery(event.target).val());
+        importForm.find('#ame-import-file-selector').on('change', (event) => {
+            this.uploadButtonEnabled(!!jQuery(event.target).val());
         });
         //This function displays unhandled server side errors. In theory, our upload handler always returns a well-formed
         //response even if there's an error. In practice, stuff can go wrong in unexpected ways (e.g. plugin conflicts).
-        var handleUnexpectedImportError = function (xhr, errorMessage) {
+        let handleUnexpectedImportError = (xhr, errorMessage) => {
             //The server-side code didn't catch this error, so it's probably something serious
             //and retrying won't work.
             importForm.resetForm();
-            _this.importState('unexpected-error');
+            this.importState('unexpected-error');
             //Display error information.
-            _this.importErrorMessage(errorMessage);
-            _this.importErrorHttpCode(xhr.status);
-            _this.importErrorResponse((xhr.responseText !== '') ? xhr.responseText : '[Empty response]');
+            this.importErrorMessage(errorMessage);
+            this.importErrorHttpCode(xhr.status);
+            this.importErrorResponse((xhr.responseText !== '') ? xhr.responseText : '[Empty response]');
         };
         importForm.ajaxForm({
             dataType: 'json',
-            beforeSubmit: function (formData) {
+            beforeSubmit: (formData) => {
                 //Check if the user has selected a file
-                for (var i = 0; i < formData.length; i++) {
+                for (let i = 0; i < formData.length; i++) {
                     if (formData[i].name === 'widget_file') {
                         if ((typeof formData[i].value === 'undefined') || !formData[i].value) {
                             alert('Select a file first!');
@@ -212,12 +354,12 @@ var AmeDashboardWidgetEditor = /** @class */ (function () {
                         }
                     }
                 }
-                _this.importState('uploading');
-                _this.uploadButtonEnabled(false);
+                this.importState('uploading');
+                this.uploadButtonEnabled(false);
                 return true;
             },
-            success: function (data, status, xhr) {
-                if (!_this.importDialog.dialog('isOpen')) {
+            success: (data, status, xhr) => {
+                if (!importDialog.dialog('isOpen')) {
                     //Whoops, the user closed the dialog while the upload was in progress.
                     //Discard the response silently.
                     return;
@@ -230,15 +372,15 @@ var AmeDashboardWidgetEditor = /** @class */ (function () {
                     alert(data.error.message || data.error.code);
                     //Let the user try again.
                     importForm.resetForm();
-                    _this.importState('start');
+                    this.importState('start');
                 }
                 if ((typeof data.widgets !== 'undefined') && data.widgets) {
                     //Lets load these widgets into the editor.
-                    _this.loadSettings(data);
+                    this.loadSettings(data);
                     //Display a success message, then automatically close the window after a few moments.
-                    _this.importState('complete');
-                    setTimeout(function () {
-                        _this.importDialog.dialog('close');
+                    this.importState('complete');
+                    setTimeout(() => {
+                        importDialog.dialog('close');
                     }, 700);
                 }
             },
@@ -246,21 +388,29 @@ var AmeDashboardWidgetEditor = /** @class */ (function () {
                 handleUnexpectedImportError(xhr, errorMessage);
             }
         });
-        this.importDialog.find('#ame-cancel-widget-import').on('click', function () {
-            _this.importDialog.dialog('close');
+        importDialog.find('#ame-cancel-widget-import').on('click', () => {
+            importDialog.dialog('close');
         });
-    };
+        return importDialog;
+    }
     // noinspection JSUnusedGlobalSymbols Used in Knockout templates.
-    AmeDashboardWidgetEditor.prototype.openImportDialog = function () {
+    openImportDialog() {
         this.importDialog.dialog('open');
-    };
-    AmeDashboardWidgetEditor._ = wsAmeLodash;
-    AmeDashboardWidgetEditor.autoCleanupEnabled = true;
-    AmeDashboardWidgetEditor.customIdPrefix = 'ame-custom-widget-';
-    return AmeDashboardWidgetEditor;
-}());
+    }
+}
+AmeDashboardWidgetEditor._ = wsAmeLodash;
+AmeDashboardWidgetEditor.autoCleanupEnabled = true;
+AmeDashboardWidgetEditor.customIdPrefix = 'ame-custom-widget-';
 jQuery(function () {
-    ameWidgetEditor = new AmeDashboardWidgetEditor(wsWidgetEditorData.widgetSettings, wsWidgetEditorData.selectedActor, wsWidgetEditorData.isMultisite);
+    ameWidgetEditor = new AmeDashboardWidgetEditor(wsWidgetEditorData.widgetSettings, wsWidgetEditorData.selectedActor, wsWidgetEditorData.isMultisite, wsWidgetEditorData.previewColumns);
     ko.applyBindings(ameWidgetEditor, document.getElementById('ame-dashboard-widget-editor'));
+    //Set up tooltips.
+    if (typeof jQuery['qtip'] !== 'undefined') {
+        jQuery('#ame-dashboard-widget-editor .ws_tooltip_trigger').qtip({
+            style: {
+                classes: 'qtip qtip-rounded ws_tooltip_node'
+            }
+        });
+    }
 });
 //# sourceMappingURL=dashboard-widget-editor.js.map

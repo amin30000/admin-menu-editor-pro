@@ -1,9 +1,8 @@
+"use strict";
 /// <reference path="../../js/jquery.d.ts" />
 /// <reference path="../../js/actor-manager.ts" />
-var AmeActorSelector = /** @class */ (function () {
-    function AmeActorSelector(actorManager, isProVersion, allOptionEnabled) {
-        if (allOptionEnabled === void 0) { allOptionEnabled = true; }
-        var _this = this;
+class AmeActorSelector {
+    constructor(actorManager, isProVersion, allOptionEnabled = true) {
         this.selectedActor = null;
         this.selectedDisplayName = 'All';
         this.visibleUsers = [];
@@ -11,6 +10,7 @@ var AmeActorSelector = /** @class */ (function () {
         this.isProVersion = false;
         this.allOptionEnabled = true;
         this.cachedVisibleActors = null;
+        this.selectorNode = null;
         this.isDomInitStarted = false;
         this.actorManager = actorManager;
         if (typeof isProVersion !== 'undefined') {
@@ -21,14 +21,13 @@ var AmeActorSelector = /** @class */ (function () {
         this.visibleUsers = wsAmeActorSelectorData.visibleUsers;
         this.ajaxParams = wsAmeActorSelectorData;
         //Discard any users that don't exist / were not loaded by the actor manager.
-        var _ = AmeActorSelector._;
+        const _ = AmeActorSelector._;
         this.visibleUsers = _.intersection(this.visibleUsers, _.keys(actorManager.getUsers()));
-        jQuery(function () {
-            _this.initDOM();
+        jQuery(() => {
+            this.initDOM();
         });
     }
-    AmeActorSelector.prototype.initDOM = function () {
-        var _this = this;
+    initDOM() {
         if (this.isDomInitStarted) {
             return;
         }
@@ -41,72 +40,81 @@ var AmeActorSelector = /** @class */ (function () {
             return;
         }
         //Select an actor on click.
-        this.selectorNode.on('click', 'li a.ws_actor_option', function (event) {
-            var href = jQuery(event.target).attr('href');
-            var fragmentStart = href.indexOf('#');
-            var actor = null;
+        this.selectorNode.on('click', 'li a.ws_actor_option', (event) => {
+            const href = jQuery(event.target).attr('href');
+            const fragmentStart = href.indexOf('#');
+            let actor = null;
             if (fragmentStart >= 0) {
                 actor = href.substring(fragmentStart + 1);
             }
             if (actor === '') {
                 actor = null;
             }
-            _this.setSelectedActor(actor);
+            this.setSelectedActor(actor);
             event.preventDefault();
         });
         //Display the user selection dialog when the user clicks "Choose users".
-        this.selectorNode.on('click', '#ws_show_more_users', function (event) {
+        this.selectorNode.on('click', '#ws_show_more_users', (event) => {
             event.preventDefault();
             AmeVisibleUserDialog.open({
-                currentUserLogin: _this.currentUserLogin,
-                users: _this.actorManager.getUsers(),
-                visibleUsers: _this.visibleUsers,
-                actorManager: _this.actorManager,
-                save: function (userDetails, selectedUsers) {
-                    _this.actorManager.addUsers(userDetails);
-                    _this.visibleUsers = selectedUsers;
+                currentUserLogin: this.currentUserLogin,
+                users: this.actorManager.getUsers(),
+                visibleUsers: this.visibleUsers,
+                actorManager: this.actorManager,
+                save: (userDetails, selectedUsers) => {
+                    this.actorManager.addUsers(userDetails);
+                    this.visibleUsers = selectedUsers;
                     //The user list has changed, so clear the cache.
-                    _this.cachedVisibleActors = null;
+                    this.cachedVisibleActors = null;
                     //Display the new actor list.
-                    _this.populateActorSelector();
+                    this.populateActorSelector();
                     //Save the user list via AJAX.
-                    _this.saveVisibleUsers();
+                    this.saveVisibleUsers();
                 }
             });
         });
-    };
-    AmeActorSelector.prototype.setSelectedActor = function (actorId) {
+    }
+    setSelectedActor(actorId) {
         if ((actorId !== null) && !this.actorManager.actorExists(actorId)) {
             return;
         }
-        var previousSelection = this.selectedActor;
+        const previousSelection = this.selectedActor;
         this.selectedActor = actorId;
         this.highlightSelectedActor();
         if (actorId !== null) {
-            this.selectedDisplayName = this.actorManager.getActor(actorId).getDisplayName();
+            const actor = this.actorManager.getActor(actorId);
+            if (actor !== null) {
+                this.selectedDisplayName = actor.getDisplayName();
+            }
+            else {
+                this.selectedDisplayName = '[' + actorId + ']';
+            }
         }
         else {
             this.selectedDisplayName = 'All';
         }
         //Notify subscribers that the selection has changed.
         if (this.selectedActor !== previousSelection) {
-            for (var i = 0; i < this.subscribers.length; i++) {
+            for (let i = 0; i < this.subscribers.length; i++) {
                 this.subscribers[i](this.selectedActor, previousSelection);
             }
         }
-    };
-    AmeActorSelector.prototype.onChange = function (callback) {
+    }
+    onChange(callback) {
         this.subscribers.push(callback);
-    };
-    AmeActorSelector.prototype.highlightSelectedActor = function () {
+    }
+    highlightSelectedActor() {
         //Set up and populate the selector element if we haven't done that yet.
         if (!this.isDomInitStarted) {
             this.initDOM();
         }
+        if (this.selectorNode === null) {
+            return; //Should never happen since initDOM() should have set this.
+        }
         //Deselect the previous item.
         this.selectorNode.find('.current').removeClass('current');
         //Select the new one or "All".
-        var selector;
+        let selector;
         if (this.selectedActor === null) {
             selector = 'a.ws_no_actor';
         }
@@ -114,27 +122,30 @@ var AmeActorSelector = /** @class */ (function () {
             selector = 'a[href$="#' + this.selectedActor + '"]';
         }
         this.selectorNode.find(selector).addClass('current');
-    };
-    AmeActorSelector.prototype.populateActorSelector = function () {
-        var actorSelector = this.selectorNode, $ = jQuery;
-        var isSelectedActorVisible = false;
+    }
+    populateActorSelector() {
+        if (this.selectorNode === null) {
+            return; //Not initialized yet.
+        }
+        const actorSelector = this.selectorNode, $ = jQuery;
+        let isSelectedActorVisible = false;
         //Build the list of available actors.
         actorSelector.empty();
         if (this.allOptionEnabled) {
             actorSelector.append('<li><a href="#" class="current ws_actor_option ws_no_actor" data-text="All">All</a></li>');
         }
-        var visibleActors = this.getVisibleActors();
-        for (var i = 0; i < visibleActors.length; i++) {
-            var actor = visibleActors[i], name_1 = this.getNiceName(actor);
+        const visibleActors = this.getVisibleActors();
+        for (let i = 0; i < visibleActors.length; i++) {
+            const actor = visibleActors[i], name = this.getNiceName(actor);
             actorSelector.append($('<li></li>').append($('<a></a>')
                 .attr('href', '#' + actor.getId())
-                .attr('data-text', name_1)
-                .text(name_1)
+                .attr('data-text', name)
+                .text(name)
                 .addClass('ws_actor_option')));
             isSelectedActorVisible = (actor.getId() === this.selectedActor) || isSelectedActorVisible;
         }
         if (this.isProVersion) {
-            var moreUsersText = 'Choose users\u2026';
+            const moreUsersText = 'Choose users\u2026';
             actorSelector.append($('<li>').append($('<a></a>')
                 .attr('id', 'ws_show_more_users')
                 .attr('href', '#more-users')
@@ -150,60 +161,65 @@ var AmeActorSelector = /** @class */ (function () {
                 this.setSelectedActor(null);
             }
             else {
-                var availableActors = this.getVisibleActors();
+                const availableActors = this.getVisibleActors();
                 this.setSelectedActor(AmeActorSelector._.first(availableActors).getId());
             }
         }
         this.highlightSelectedActor();
-    };
-    AmeActorSelector.prototype.repopulate = function () {
+    }
+    repopulate() {
         this.cachedVisibleActors = null;
         this.populateActorSelector();
-    };
-    AmeActorSelector.prototype.getVisibleActors = function () {
-        var _this = this;
+    }
+    getVisibleActors() {
         if (this.cachedVisibleActors) {
             return this.cachedVisibleActors;
         }
-        var _ = AmeActorSelector._;
-        var actors = [];
+        const _ = AmeActorSelector._;
+        let actors = [];
         //Include all roles.
         //Idea: Sort roles either alphabetically or by typical privilege level (admin, editor, author, ...).
         _.forEach(this.actorManager.getRoles(), function (role) {
             actors.push(role);
         });
         //Include the Super Admin (multisite only).
-        if (this.actorManager.getUser(this.currentUserLogin).isSuperAdmin) {
+        const user = this.actorManager.getUser(this.currentUserLogin);
+        if (user && user.isSuperAdmin) {
             actors.push(this.actorManager.getSuperAdmin());
         }
         //Include the current user.
-        actors.push(this.actorManager.getUser(this.currentUserLogin));
+        const currentUser = this.actorManager.getUser(this.currentUserLogin);
+        if (currentUser) {
+            actors.push(currentUser);
+        }
         //Include other visible users.
         _(this.visibleUsers)
             .without(this.currentUserLogin)
             .sortBy()
-            .forEach(function (login) {
-            var user = _this.actorManager.getUser(login);
-            actors.push(user);
+            .forEach((login) => {
+            const user = this.actorManager.getUser(login);
+            if (user) {
+                actors.push(user);
+            }
         })
             .value();
         this.cachedVisibleActors = actors;
         return actors;
-    };
-    AmeActorSelector.prototype.saveVisibleUsers = function () {
+    }
+    saveVisibleUsers() {
         jQuery.post(this.ajaxParams.adminAjaxUrl, {
             'action': this.ajaxParams.ajaxUpdateAction,
             '_ajax_nonce': this.ajaxParams.ajaxUpdateNonce,
             'visible_users': JSON.stringify(this.visibleUsers)
         });
-    };
-    AmeActorSelector.prototype.getCurrentUserActor = function () {
+    }
+    getCurrentUserActor() {
         return this.actorManager.getUser(this.currentUserLogin);
-    };
-    AmeActorSelector.prototype.getNiceName = function (actor) {
-        var name = actor.getDisplayName();
+    }
+    getNiceName(actor) {
+        let name = actor.getDisplayName();
         if (actor.hasOwnProperty('userLogin')) {
-            var user = actor;
+            const user = actor;
             if (user.userLogin === this.currentUserLogin) {
                 name = 'Current user (' + user.userLogin + ')';
             }
@@ -212,42 +228,40 @@ var AmeActorSelector = /** @class */ (function () {
             }
         }
         return name;
-    };
+    }
     /**
      * Wrap the selected actor ID in a computed observable so that it can be used with Knockout.
      * @param ko
      */
-    AmeActorSelector.prototype.createKnockoutObservable = function (ko) {
-        var _this = this;
-        var internalObservable = ko.observable(this.selectedActor);
-        var publicObservable = ko.computed({
+    createKnockoutObservable(ko) {
+        const internalObservable = ko.observable(this.selectedActor);
+        const publicObservable = ko.computed({
             read: function () {
                 return internalObservable();
             },
-            write: function (newActor) {
-                _this.setSelectedActor(newActor);
+            write: (newActor) => {
+                this.setSelectedActor(newActor);
             }
         });
-        this.onChange(function (newSelectedActor) {
+        this.onChange((newSelectedActor) => {
             internalObservable(newSelectedActor);
         });
         return publicObservable;
-    };
-    AmeActorSelector.prototype.createIdObservable = function (ko) {
+    }
+    createIdObservable(ko) {
         return this.createKnockoutObservable(ko);
-    };
-    AmeActorSelector.prototype.createActorObservable = function (ko) {
-        var _this = this;
-        var internalObservable = ko.observable((this.selectedActor === null) ? null : this.actorManager.getActor(this.selectedActor));
-        var publicObservable = ko.computed({
+    }
+    createActorObservable(ko) {
+        const internalObservable = ko.observable((this.selectedActor === null) ? null : this.actorManager.getActor(this.selectedActor));
+        const publicObservable = ko.computed({
             read: function () {
                 return internalObservable();
             },
-            write: function (newActor) {
-                _this.setSelectedActor((newActor !== null) ? newActor.getId() : null);
+            write: (newActor) => {
+                this.setSelectedActor((newActor !== null) ? newActor.getId() : null);
             }
         });
-        var self = this;
+        const self = this;
         this.onChange(function (newSelectedActor) {
             if (newSelectedActor === null) {
                 internalObservable(null);
@@ -257,8 +271,7 @@ var AmeActorSelector = /** @class */ (function () {
             }
         });
         return publicObservable;
-    };
-    AmeActorSelector._ = wsAmeLodash;
-    return AmeActorSelector;
-}());
+    }
+}
+AmeActorSelector._ = wsAmeLodash;
 //# sourceMappingURL=actor-selector.js.map

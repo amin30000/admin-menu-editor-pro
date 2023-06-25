@@ -137,9 +137,9 @@ class phpColor {
         }
 
         // Convert to hex
-        $r = dechex($r);
-        $g = dechex($g);
-        $b = dechex($b);
+        $r = dechex((int)round($r));
+        $g = dechex((int)round($g));
+        $b = dechex((int)round($b));
 
         // Make sure we get 2 digits for decimals
         $r = (strlen("".$r)===1) ? "0".$r:$r;
@@ -186,9 +186,9 @@ class phpColor {
         }
 
         // Convert RGB to HEX
-        $hex[0] = str_pad(dechex( $rgb['R'] ), 2, '0', STR_PAD_LEFT);
-        $hex[1] = str_pad(dechex( $rgb['G'] ), 2, '0', STR_PAD_LEFT);
-        $hex[2] = str_pad(dechex( $rgb['B'] ), 2, '0', STR_PAD_LEFT);
+        $hex[0] = str_pad(dechex( (int)round($rgb['R'])), 2, '0', STR_PAD_LEFT);
+        $hex[1] = str_pad(dechex( (int)round($rgb['G']) ), 2, '0', STR_PAD_LEFT);
+        $hex[2] = str_pad(dechex( (int)round($rgb['B']) ), 2, '0', STR_PAD_LEFT);
 
         return implode( '', $hex );
 

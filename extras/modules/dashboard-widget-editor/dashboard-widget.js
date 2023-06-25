@@ -1,30 +1,16 @@
+"use strict";
 /// <reference path="../../../js/knockout.d.ts" />
 /// <reference path="../../../js/lodash-3.10.d.ts" />
 /// <reference path="dashboard-widget-editor.ts" />
 /// <reference path="../../../js/common.d.ts" />
-var __extends = (this && this.__extends) || (function () {
-    var extendStatics = function (d, b) {
-        extendStatics = Object.setPrototypeOf ||
-            ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
-            function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
-        return extendStatics(d, b);
-    };
-    return function (d, b) {
-        if (typeof b !== "function" && b !== null)
-            throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
-        extendStatics(d, b);
-        function __() { this.constructor = d; }
-        d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
-    };
-})();
-var AmeDashboardWidget = /** @class */ (function () {
-    function AmeDashboardWidget(settings, widgetEditor) {
-        var _this = this;
+class AmeDashboardWidget {
+    constructor(settings, widgetEditor) {
         this.isPresent = true;
         this.missingWidgetTooltip = "N/A";
         this.canBeDeleted = false;
         this.canChangePriority = false;
         this.canChangeTitle = true;
+        this.canBeMoved = true;
         this.propertyTemplate = '';
         this.widgetType = null;
         this.rawProperties = settings;
@@ -32,7 +18,7 @@ var AmeDashboardWidget = /** @class */ (function () {
         this.id = settings['id'];
         this.isPresent = !!(settings['isPresent']);
         this.canBeDeleted = !this.isPresent;
-        var self = this;
+        const self = this;
         this.safeTitle = ko.computed({
             read: function () {
                 return AmeDashboardWidget.stripAllTags(self.title());
@@ -43,8 +29,8 @@ var AmeDashboardWidget = /** @class */ (function () {
         this.areAdvancedPropertiesVisible = ko.observable(true);
         this.grantAccess = new AmeActorAccessDictionary(settings.hasOwnProperty('grantAccess') ? settings['grantAccess'] : {});
         //Indeterminate checkbox state: when the widget is enabled for some roles and disabled for others.
-        var _isIndeterminate = ko.observable(false);
-        this.isIndeterminate = ko.computed(function () {
+        let _isIndeterminate = ko.observable(false);
+        this.isIndeterminate = ko.computed(() => {
             if (widgetEditor.selectedActor() !== null) {
                 return false;
             }
@@ -52,18 +38,18 @@ var AmeDashboardWidget = /** @class */ (function () {
         });
         //Is the widget enabled for the selected actor?
         this.isEnabled = ko.computed({
-            read: function () {
-                var actor = widgetEditor.selectedActor();
+            read: () => {
+                let actor = widgetEditor.selectedActor();
                 if (actor !== null) {
-                    return _this.actorHasAccess(actor);
+                    return !!this.actorHasAccess(actor);
                 }
                 else {
                     //Check if any actors have this widget enabled.
                     //We only care about visible actors. There might be some users that are loaded but not visible.
-                    var actors = widgetEditor.actorSelector.getVisibleActors();
-                    var areAnyActorsEnabled = false, areAnyActorsDisabled = false;
-                    for (var index = 0; index < actors.length; index++) {
-                        var hasAccess = _this.actorHasAccess(actors[index].getId(), actors[index]);
+                    const actors = widgetEditor.actorSelector.getVisibleActors();
+                    let areAnyActorsEnabled = false, areAnyActorsDisabled = false;
+                    for (let index = 0; index < actors.length; index++) {
+                        let hasAccess = this.actorHasAccess(actors[index].getId(), actors[index]);
                         if (hasAccess) {
                             areAnyActorsEnabled = true;
                         }
@@ -75,37 +61,37 @@ var AmeDashboardWidget = /** @class */ (function () {
                     return areAnyActorsEnabled;
                 }
             },
-            write: function (enabled) {
-                var actor = widgetEditor.selectedActor();
+            write: (enabled) => {
+                let actor = widgetEditor.selectedActor();
                 if (actor !== null) {
-                    _this.grantAccess.set(actor, enabled);
+                    this.grantAccess.set(actor, enabled);
                 }
                 else {
                     //Enable/disable all.
-                    var actors = widgetEditor.actorSelector.getVisibleActors();
-                    for (var index = 0; index < actors.length; index++) {
-                        _this.grantAccess.set(actors[index].getId(), enabled);
+                    const actors = widgetEditor.actorSelector.getVisibleActors();
+                    for (let index = 0; index < actors.length; index++) {
+                        this.grantAccess.set(actors[index].getId(), enabled);
                     }
                 }
             }
         });
     }
-    AmeDashboardWidget.stripAllTags = function (input) {
+    static stripAllTags(input) {
         //Based on: http://phpjs.org/functions/strip_tags/
-        var tags = /<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, commentsAndPhpTags = /<!--[\s\S]*?-->|<\?(?:php)?[\s\S]*?\?>/gi;
+        const tags = /<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, commentsAndPhpTags = /<!--[\s\S]*?-->|<\?(?:php)?[\s\S]*?\?>/gi;
         return input.replace(commentsAndPhpTags, '').replace(tags, '');
-    };
-    AmeDashboardWidget.prototype.createObservableWithDefault = function (customValue, defaultValue, writeCallback) {
+    }
+    createObservableWithDefault(customValue, defaultValue, writeCallback) {
         //Sentinel value: '' (the empty string). Null is also accepted and automatically converted to ''.
-        var sentinel = '';
+        const sentinel = '';
         customValue = writeCallback(customValue, sentinel);
         if ((customValue === defaultValue) || (customValue === null)) {
             customValue = sentinel;
         }
-        var _customValue = ko.observable(customValue);
-        var observable = ko.computed({
+        let _customValue = ko.observable(customValue);
+        let observable = ko.computed({
             read: function () {
-                var customValue = _customValue();
+                let customValue = _customValue();
                 if (customValue === sentinel) {
                     return defaultValue;
                 }
@@ -114,8 +100,8 @@ var AmeDashboardWidget = /** @class */ (function () {
                 }
             },
             write: function (newValue) {
-                var oldValue = _customValue();
-                var valueToWrite = writeCallback(newValue, oldValue);
+                const oldValue = _customValue();
+                let valueToWrite = writeCallback(newValue, oldValue);
                 if ((valueToWrite === defaultValue) || (valueToWrite === null)) {
                     valueToWrite = sentinel;
                 }
@@ -134,12 +120,12 @@ var AmeDashboardWidget = /** @class */ (function () {
             return _customValue();
         };
         return observable;
-    };
-    AmeDashboardWidget.prototype.toggle = function () {
+    }
+    toggle() {
         this.isOpen(!this.isOpen());
-    };
-    AmeDashboardWidget.prototype.toPropertyMap = function () {
-        var properties = {
+    }
+    toPropertyMap() {
+        let properties = {
             'id': this.id,
             'title': this.title(),
             'location': this.location(),
@@ -151,11 +137,10 @@ var AmeDashboardWidget = /** @class */ (function () {
             properties['widgetType'] = this.widgetType;
         }
         return properties;
-    };
-    AmeDashboardWidget.prototype.actorHasAccess = function (actorId, actor, defaultAccess) {
-        if (defaultAccess === void 0) { defaultAccess = true; }
+    }
+    actorHasAccess(actorId, actor, defaultAccess = true) {
         //Is there a setting for this actor specifically?
-        var hasAccess = this.grantAccess.get(actorId, null);
+        let hasAccess = this.grantAccess.get(actorId, null);
         if (hasAccess !== null) {
             return hasAccess;
         }
@@ -168,69 +153,30 @@ var AmeDashboardWidget = /** @class */ (function () {
                 return this.grantAccess.get('special:super_admin', true);
             }
             //Allow access if at least one role has access.
-            var result = false;
-            for (var index = 0; index < actor.roles.length; index++) {
-                var roleActor = 'role:' + actor.roles[index], roleHasAccess = this.grantAccess.get(roleActor, true);
-                result = result || roleHasAccess;
+            let result = false;
+            for (let index = 0; index < actor.roles.length; index++) {
+                let roleActor = 'role:' + actor.roles[index], roleHasAccess = this.grantAccess.get(roleActor, true);
+                result = result || (!!roleHasAccess);
             }
             return result;
         }
         //By default, all widgets are visible to everyone.
         return defaultAccess;
-    };
-    AmeDashboardWidget._ = wsAmeLodash;
-    return AmeDashboardWidget;
-}());
-var AmeActorAccessDictionary = /** @class */ (function () {
-    function AmeActorAccessDictionary(initialData) {
-        this.items = {};
-        this.numberOfObservables = ko.observable(0);
-        if (initialData) {
-            this.setAll(initialData);
-        }
     }
-    AmeActorAccessDictionary.prototype.get = function (actor, defaultValue) {
-        if (defaultValue === void 0) { defaultValue = null; }
-        if (this.items.hasOwnProperty(actor)) {
-            return this.items[actor]();
-        }
-        this.numberOfObservables(); //Establish a dependency.
-        return defaultValue;
-    };
-    AmeActorAccessDictionary.prototype.set = function (actor, value) {
-        if (!this.items.hasOwnProperty(actor)) {
-            this.items[actor] = ko.observable(value);
-            this.numberOfObservables(this.numberOfObservables() + 1);
-        }
-        else {
-            this.items[actor](value);
-        }
-    };
-    // noinspection JSUnusedGlobalSymbols
-    AmeActorAccessDictionary.prototype.getAll = function () {
-        var result = {};
-        for (var actorId in this.items) {
-            if (this.items.hasOwnProperty(actorId)) {
-                result[actorId] = this.items[actorId]();
-            }
-        }
-        return result;
-    };
-    AmeActorAccessDictionary.prototype.setAll = function (values) {
-        for (var actorId in values) {
-            if (values.hasOwnProperty(actorId)) {
-                this.set(actorId, values[actorId]);
-            }
-        }
-    };
-    return AmeActorAccessDictionary;
-}());
-var AmeStandardWidgetWrapper = /** @class */ (function (_super) {
-    __extends(AmeStandardWidgetWrapper, _super);
-    function AmeStandardWidgetWrapper(settings, widgetEditor) {
-        var _this = _super.call(this, settings, widgetEditor) || this;
-        _this.wrappedWidget = settings['wrappedWidget'];
-        _this.title = _this.createObservableWithDefault(settings['title'], _this.wrappedWidget.title, function (value) {
+}
+AmeDashboardWidget._ = wsAmeLodash;
+AmeDashboardWidget.locationToColumnMap = {
+    'normal': 0,
+    'side': 1,
+    'column3': 2,
+    'column4': 3
+};
+AmeDashboardWidget.columnToLocationMap = Object.keys(AmeDashboardWidget.locationToColumnMap);
+class AmeStandardWidgetWrapper extends AmeDashboardWidget {
+    constructor(settings, widgetEditor) {
+        super(settings, widgetEditor);
+        this.wrappedWidget = settings['wrappedWidget'];
+        this.title = this.createObservableWithDefault(settings['title'], this.wrappedWidget.title, function (value) {
             //Trim leading and trailing whitespace.
             value = value.replace(/^\s+|\s+$/g, "");
             if (value === '') {
@@ -238,106 +184,105 @@ var AmeStandardWidgetWrapper = /** @class */ (function (_super) {
             }
             return value;
         });
-        _this.location = _this.createObservableWithDefault(settings['location'], _this.wrappedWidget.location, function () {
+        this.location = this.createObservableWithDefault(settings['location'], this.wrappedWidget.location, function (value) {
+            if (value === null) {
+                return null;
+            }
+            if (AmeDashboardWidget.locationToColumnMap.hasOwnProperty(value)) {
+                return value;
+            }
             return null;
         });
-        _this.priority = _this.createObservableWithDefault(settings['priority'], _this.wrappedWidget.priority, function () {
+        this.priority = this.createObservableWithDefault(settings['priority'], this.wrappedWidget.priority, function () {
             return null;
         });
-        if (!_this.isPresent) {
+        if (!this.isPresent) {
             //Note: This is not intended to be perfectly accurate.
-            var wasCreatedByTheme = _this.rawProperties.hasOwnProperty('callbackFileName')
-                && _this.rawProperties['callbackFileName'].match(/[/\\]wp-content[/\\]themes[/\\]/);
-            _this.missingWidgetTooltip = (wasCreatedByTheme ? 'The theme' : 'The plugin')
+            const wasCreatedByTheme = this.rawProperties.hasOwnProperty('callbackFileName')
+                && this.rawProperties['callbackFileName'].match(/[/\\]wp-content[/\\]themes[/\\]/);
+            this.missingWidgetTooltip = (wasCreatedByTheme ? 'The theme' : 'The plugin')
                 + ' that created this widget is not active.'
                 + '\nTo remove the widget, open it and click "Delete".';
         }
-        return _this;
     }
-    AmeStandardWidgetWrapper.prototype.toPropertyMap = function () {
-        var properties = _super.prototype.toPropertyMap.call(this);
+    toPropertyMap() {
+        let properties = super.toPropertyMap();
         properties['wrappedWidget'] = this.wrappedWidget;
         properties['title'] = this.title.getCustomValue();
         properties['location'] = this.location.getCustomValue();
         properties['priority'] = this.priority.getCustomValue();
         return properties;
-    };
-    return AmeStandardWidgetWrapper;
-}(AmeDashboardWidget));
-var AmeCustomHtmlWidget = /** @class */ (function (_super) {
-    __extends(AmeCustomHtmlWidget, _super);
-    function AmeCustomHtmlWidget(settings, widgetEditor) {
-        var _this = this;
-        var _ = AmeDashboardWidget._;
+    }
+}
+class AmeCustomHtmlWidget extends AmeDashboardWidget {
+    constructor(settings, widgetEditor) {
+        const _ = AmeDashboardWidget._;
         settings = _.merge({
             id: 'new-untitled-widget',
             isPresent: true,
             grantAccess: {}
         }, settings);
-        _this = _super.call(this, settings, widgetEditor) || this;
-        _this.widgetType = 'custom-html';
-        _this.canChangePriority = true;
-        _this.title = ko.observable(_.get(settings, 'title', 'New Widget'));
-        _this.location = ko.observable(_.get(settings, 'location', 'normal'));
-        _this.priority = ko.observable(_.get(settings, 'priority', 'high'));
-        _this.content = ko.observable(_.get(settings, 'content', ''));
-        _this.filtersEnabled = ko.observable(_.get(settings, 'filtersEnabled', true));
+        super(settings, widgetEditor);
+        this.widgetType = 'custom-html';
+        this.canChangePriority = true;
+        this.title = ko.observable(_.get(settings, 'title', 'New Widget'));
+        this.location = ko.observable(_.get(settings, 'location', 'normal'));
+        this.priority = ko.observable(_.get(settings, 'priority', 'high'));
+        this.content = ko.observable(_.get(settings, 'content', ''));
+        this.filtersEnabled = ko.observable(_.get(settings, 'filtersEnabled', true));
         //Custom widgets are always present and can always be deleted.
-        _this.isPresent = true;
-        _this.canBeDeleted = true;
-        _this.propertyTemplate = 'ame-custom-html-widget-template';
-        return _this;
+        this.isPresent = true;
+        this.canBeDeleted = true;
+        this.propertyTemplate = 'ame-custom-html-widget-template';
     }
-    AmeCustomHtmlWidget.prototype.toPropertyMap = function () {
-        var properties = _super.prototype.toPropertyMap.call(this);
+    toPropertyMap() {
+        let properties = super.toPropertyMap();
         properties['content'] = this.content();
         properties['filtersEnabled'] = this.filtersEnabled();
         return properties;
-    };
-    return AmeCustomHtmlWidget;
-}(AmeDashboardWidget));
-var AmeCustomRssWidget = /** @class */ (function (_super) {
-    __extends(AmeCustomRssWidget, _super);
-    function AmeCustomRssWidget(settings, widgetEditor) {
-        var _this = this;
-        var _ = AmeDashboardWidget._;
+    }
+}
+class AmeCustomRssWidget extends AmeDashboardWidget {
+    constructor(settings, widgetEditor) {
+        const _ = AmeDashboardWidget._;
         settings = _.merge({
             id: 'new-untitled-rss-widget',
             isPresent: true,
             grantAccess: {}
         }, settings);
-        _this = _super.call(this, settings, widgetEditor) || this;
-        _this.widgetType = 'custom-rss';
-        _this.canChangePriority = true;
-        _this.title = ko.observable(_.get(settings, 'title', 'New RSS Widget'));
-        _this.location = ko.observable(_.get(settings, 'location', 'normal'));
-        _this.priority = ko.observable(_.get(settings, 'priority', 'high'));
-        _this.feedUrl = ko.observable(_.get(settings, 'feedUrl', ''));
-        _this.maxItems = ko.observable(_.get(settings, 'maxItems', 5));
-        _this.showAuthor = ko.observable(_.get(settings, 'showAuthor', true));
-        _this.showDate = ko.observable(_.get(settings, 'showDate', true));
-        _this.showSummary = ko.observable(_.get(settings, 'showSummary', true));
-        _this.isPresent = true;
-        _this.canBeDeleted = true;
-        _this.propertyTemplate = 'ame-custom-rss-widget-template';
-        return _this;
+        super(settings, widgetEditor);
+        this.widgetType = 'custom-rss';
+        this.canChangePriority = true;
+        this.title = ko.observable(_.get(settings, 'title', 'New RSS Widget'));
+        this.location = ko.observable(_.get(settings, 'location', 'normal'));
+        this.priority = ko.observable(_.get(settings, 'priority', 'high'));
+        this.feedUrl = ko.observable(_.get(settings, 'feedUrl', ''));
+        this.maxItems = ko.observable(_.get(settings, 'maxItems', 5));
+        this.showAuthor = ko.observable(_.get(settings, 'showAuthor', true));
+        this.showDate = ko.observable(_.get(settings, 'showDate', true));
+        this.showSummary = ko.observable(_.get(settings, 'showSummary', true));
+        this.openInNewTab = ko.observable(_.get(settings, 'openInNewTab', false));
+        this.isPresent = true;
+        this.canBeDeleted = true;
+        this.propertyTemplate = 'ame-custom-rss-widget-template';
     }
-    AmeCustomRssWidget.prototype.toPropertyMap = function () {
-        var properties = _super.prototype.toPropertyMap.call(this);
-        var storedProps = ['feedUrl', 'showAuthor', 'showDate', 'showSummary', 'maxItems'];
-        for (var i = 0; i < storedProps.length; i++) {
-            var name_1 = storedProps[i];
-            properties[name_1] = this[name_1]();
+    toPropertyMap() {
+        let properties = super.toPropertyMap();
+        let storedProps = ['feedUrl', 'showAuthor', 'showDate', 'showSummary', 'openInNewTab', 'maxItems'];
+        const self = this;
+        for (let i = 0; i < storedProps.length; i++) {
+            let name = storedProps[i];
+            const property = self[name];
+            if (property && ko.isObservable(property)) {
+                properties[name] = property();
+            }
         }
         return properties;
-    };
-    return AmeCustomRssWidget;
-}(AmeDashboardWidget));
-var AmeWelcomeWidget = /** @class */ (function (_super) {
-    __extends(AmeWelcomeWidget, _super);
-    function AmeWelcomeWidget(settings, widgetEditor) {
-        var _this = this;
-        var _ = AmeDashboardWidget._;
+    }
+}
+class AmeWelcomeWidget extends AmeDashboardWidget {
+    constructor(settings, widgetEditor) {
+        const _ = AmeDashboardWidget._;
         if (_.isArray(settings)) {
             settings = {};
         }
@@ -346,36 +291,39 @@ var AmeWelcomeWidget = /** @class */ (function (_super) {
             isPresent: true,
             grantAccess: {}
         }, settings);
-        _this = _super.call(this, settings, widgetEditor) || this;
-        _this.title = ko.observable('Welcome');
-        _this.location = ko.observable('normal');
-        _this.priority = ko.observable('high');
-        _this.canChangeTitle = false;
-        _this.canChangePriority = false;
-        _this.areAdvancedPropertiesVisible(false);
+        super(settings, widgetEditor);
+        this.title = ko.observable('Welcome');
+        this.location = ko.observable('normal');
+        this.priority = ko.observable('high');
+        this.canChangeTitle = false;
+        this.canChangePriority = false;
+        this.canBeMoved = false;
+        this.areAdvancedPropertiesVisible(false);
         //The "Welcome" widget is part of WordPress core. It's always present and can't be deleted.
-        _this.isPresent = true;
-        _this.canBeDeleted = false;
-        _this.propertyTemplate = 'ame-welcome-widget-template';
-        return _this;
+        this.isPresent = true;
+        this.canBeDeleted = false;
+        this.propertyTemplate = 'ame-welcome-widget-template';
     }
-    AmeWelcomeWidget.prototype.actorHasAccess = function (actorId, actor, defaultAccess) {
-        if (defaultAccess === void 0) { defaultAccess = true; }
+    actorHasAccess(actorId, actor, defaultAccess) {
         //Only people who have the "edit_theme_options" capability can see the "Welcome" panel.
         //See /wp-admin/index.php, line #108 or thereabouts.
-        defaultAccess = AmeActors.hasCapByDefault(actorId, 'edit_theme_options');
-        return _super.prototype.actorHasAccess.call(this, actorId, actor, defaultAccess);
-    };
-    AmeWelcomeWidget.permanentId = 'special:welcome-panel';
-    return AmeWelcomeWidget;
-}(AmeDashboardWidget));
-var AmeWidgetPropertyComponent = /** @class */ (function () {
-    function AmeWidgetPropertyComponent(params) {
-        this.widget = params['widget'];
-        this.label = params['label'] || '';
+        defaultAccess = !!AmeActors.hasCapByDefault(actorId, 'edit_theme_options');
+        return super.actorHasAccess(actorId, actor, defaultAccess);
     }
-    return AmeWidgetPropertyComponent;
-}());
+}
+AmeWelcomeWidget.permanentId = 'special:welcome-panel';
+class AmeWidgetPropertyComponent {
+    constructor(params) {
+        if (typeof params['widget'] === 'undefined') {
+            throw new Error('Missing required parameter "widget"');
+        }
+        if (!(params['widget'] instanceof AmeDashboardWidget)) {
+            throw new Error('Parameter "widget" must be an instance of AmeDashboardWidget');
+        }
+        this.widget = params['widget'];
+        this.label = params['label'] ? (String(params['label'])) : '';
+    }
+}
 //Custom element: <ame-widget-property>
 ko.components.register('ame-widget-property', {
     viewModel: AmeWidgetPropertyComponent,

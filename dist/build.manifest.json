@@ -1,0 +1,7 @@
+{
+  "admin-customizer": [
+    "runtime.bundle.js",
+    "customizable.bundle.js",
+    "admin-customizer.bundle.js"
+  ]
+}

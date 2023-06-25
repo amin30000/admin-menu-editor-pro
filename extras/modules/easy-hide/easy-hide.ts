@@ -8,8 +8,8 @@
 
 'use strict';
 
-let ameEasyHideModel: AmeEasyHide.Model = null;
-declare let wsEasyHideData: AmeEasyHide.ScriptData;
+let ameEasyHideModel: AmeEasyHide.Model|null = null;
+declare let wsEasyHideData: AmeEasyHide.ScriptData|null;
 
 namespace AmeEasyHide {
 	const _ = wsAmeLodash;
@@ -68,12 +68,12 @@ namespace AmeEasyHide {
 		protected static counter: number = 0;
 		readonly safeElementId: string;
 
-		private cachedParentList: Category[] = null;
+		private cachedParentList: Category[]|null = null;
 
 		constructor(
 			public readonly id: string,
 			public readonly label: string,
-			public readonly parent: Category = null,
+			public readonly parent: Category|null = null,
 			public readonly invertItemState: boolean = false,
 			filterState: FilterOptions | null = null,
 			public readonly initialSortOrder: SortOrder = SortOrder.SORT_ALPHA,
@@ -90,7 +90,7 @@ namespace AmeEasyHide {
 			 * Is this category selected or inside a selected category?
 			 */
 			this.isInSelectedCategory = ko.pureComputed(() => {
-				let current: Category = this;
+				let current: Category|null = this;
 				while (current !== null) {
 					if (current.isSelected()) {
 						return true;
@@ -122,7 +122,7 @@ namespace AmeEasyHide {
 				return _.some(subcategories, category => category.isVisible());
 			});
 
-			this.subcategories = ko.observableArray([]);
+			this.subcategories = ko.observableArray([] as Category[]);
 			this.sortedSubcategories = ko.pureComputed(() => {
 				let cats = this.subcategories();
 
@@ -146,7 +146,7 @@ namespace AmeEasyHide {
 				return cats;
 			});
 
-			this.items = ko.observableArray([]);
+			this.items = ko.observableArray([] as HideableItem[]);
 
 			this.directItems = ko.pureComputed(() => {
 				let results = _(this.items())
@@ -349,7 +349,7 @@ namespace AmeEasyHide {
 
 		static fromProps(
 			props: CategoryProperties,
-			parent: Category = null,
+			parent: Category|null = null,
 			filterState: FilterOptions | null = null
 		): Category {
 			return new Category(
@@ -398,7 +398,7 @@ namespace AmeEasyHide {
 	}
 
 	class HideableItem {
-		private readonly actorSettings: AmeObservableActorSettings;
+		private readonly actorSettings: AmeObservableActorFeatureMap;
 		public readonly isChecked: KnockoutComputed<boolean>;
 		public readonly isIndeterminate: KnockoutComputed<boolean>;
 		public readonly children: HideableItem[] = [];
@@ -412,17 +412,17 @@ namespace AmeEasyHide {
 			public readonly id: string,
 			public readonly label: string,
 			public readonly categories: Array<Category> = [],
-			public readonly parent: HideableItem = null,
+			public readonly parent: HideableItem|null = null,
 			private readonly initialEnabled: Record<string, boolean> = {},
 			protected readonly isInverted: boolean = false,
-			public readonly component: string = null,
+			public readonly component: string|null = null,
 			public readonly tooltip: string | null = null,
 			public readonly subtitle: string | null = null,
-			protected readonly selectedActorRef: KnockoutComputed<IAmeActor>,
+			protected readonly selectedActorRef: KnockoutComputed<IAmeActor|null>,
 			allActorsRef: KnockoutComputed<IAmeActor[]>,
 			filterState: FilterOptions
 		) {
-			this.actorSettings = new AmeObservableActorSettings(initialEnabled);
+			this.actorSettings = new AmeObservableActorFeatureMap(initialEnabled);
 
 			let _isIndeterminate = ko.observable<boolean>(false);
 
@@ -464,7 +464,7 @@ namespace AmeEasyHide {
 		}
 
 		protected createCheckedObservable(
-			selectedActorRef: KnockoutComputed<IAmeActor>,
+			selectedActorRef: KnockoutComputed<IAmeActor|null>,
 			allActorsRef: KnockoutComputed<IAmeActor[]>,
 			outIndeterminate: KnockoutObservable<boolean> | null
 		): KnockoutComputed<boolean> {
@@ -498,11 +498,11 @@ namespace AmeEasyHide {
 
 		static fromJs(
 			props: ItemProperties,
-			selectedActor: KnockoutComputed<IAmeActor>,
+			selectedActor: KnockoutComputed<IAmeActor|null>,
 			allActors: KnockoutComputed<IAmeActor[]>,
 			filterState: FilterOptions,
 			categories: Category[] = [],
-			parent: HideableItem = null
+			parent: HideableItem|null = null
 		): HideableItem {
 			if (isBinaryProps(props)) {
 				return BinaryHideableItem.fromJs(
@@ -559,7 +559,7 @@ namespace AmeEasyHide {
 		private isEnabledForAll: KnockoutObservable<boolean> = ko.observable(false);
 
 		protected createCheckedObservable(
-			selectedActorRef: KnockoutComputed<IAmeActor>,
+			selectedActorRef: KnockoutComputed<IAmeActor|null>,
 			allActorsRef: KnockoutComputed<IAmeActor[]>,
 			outIndeterminate: KnockoutObservable<boolean> | null
 		): KnockoutComputed<boolean> {
@@ -589,11 +589,11 @@ namespace AmeEasyHide {
 
 		static fromJs(
 			props: BinaryItemProperties,
-			selectedActor: KnockoutComputed<IAmeActor>,
+			selectedActor: KnockoutComputed<IAmeActor|null>,
 			allActors: KnockoutComputed<IAmeActor[]>,
 			filterState: FilterOptions,
 			categories: Category[] = [],
-			parent: HideableItem = null
+			parent: HideableItem|null = null
 		): HideableItem {
 			const instance = new BinaryHideableItem(
 				props.id,
@@ -610,7 +610,7 @@ namespace AmeEasyHide {
 				filterState
 			);
 
-			if (props.hasOwnProperty('enabledForAll')) {
+			if (typeof props.enabledForAll !== 'undefined') {
 				instance.isEnabledForAll(props.enabledForAll);
 			}
 
@@ -633,7 +633,7 @@ namespace AmeEasyHide {
 
 	class CategoryTableView {
 		private itemLookup: Record<string, Record<string, HideableItem[]>> = {};
-		private columnHeaders: JQuery = null;
+		private columnHeaders: JQuery|null = null;
 
 		constructor(
 			public readonly rowCategory: Category,
@@ -661,7 +661,7 @@ namespace AmeEasyHide {
 		getCellItems(row: Category, column: Category): HideableItem[] {
 			const path = [row.id, column.id];
 
-			let items = _.get(this.itemLookup, path, null);
+			let items: HideableItem[]|null = _.get(this.itemLookup, path, null);
 			if (items !== null) {
 				return items;
 			}
@@ -878,7 +878,7 @@ namespace AmeEasyHide {
 			);
 			this.rootCategory.shouldRenderContent(true);
 
-			let catsWithTableView: CategoryProperties[] = [];
+			let catsWithTableView: WithRequiredKey<CategoryProperties, 'tableView'>[] = [];
 
 			_.forEach(settings.categories, (props) => {
 				let parent: Category = this.rootCategory;
@@ -892,7 +892,7 @@ namespace AmeEasyHide {
 				parent.subcategories.push(cat);
 
 				if (props.tableView) {
-					catsWithTableView.push(props);
+					catsWithTableView.push(props as WithRequiredKey<CategoryProperties, 'tableView'>);
 				}
 			});
 
@@ -909,7 +909,7 @@ namespace AmeEasyHide {
 			//Initialize items.
 			const itemsById: Record<string, HideableItem> = {};
 			_.forEach(settings.items, (props) => {
-				let parent: HideableItem = null;
+				let parent: HideableItem|null = null;
 				if (props.parent && itemsById.hasOwnProperty(props.parent)) {
 					parent = itemsById[props.parent];
 				}
@@ -1020,7 +1020,7 @@ namespace AmeEasyHide {
 			//Save expanded categories in user preferences.
 			const expandedCategories = ko.computed(() => {
 				//Make a list of category IDs.
-				return _(this.categoryLookup).filter((category: Category) => {
+				const result = _(this.categoryLookup).filter((category: Category) => {
 					//Skip the root category. It's always expanded.
 					if (category === this.rootCategory) {
 						return false;
@@ -1033,6 +1033,8 @@ namespace AmeEasyHide {
 
 					return category.isExpanded();
 				}).pluck('id').value();
+
+				return result as string[]; //TypeScript can't infer that the item type is string.
 			}).extend({rateLimit: {timeout: 100, method: 'notifyWhenChangesStop'}});
 
 			expandedCategories.subscribe((newValue: string[]) => {
@@ -1119,17 +1121,22 @@ namespace AmeEasyHide {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
+	if (wsEasyHideData === null) {
+		throw new Error('wsEasyHideData is null'); //This should never happen.
+	}
+
 	ameEasyHideModel = new AmeEasyHide.Model(wsEasyHideData, ameEhUserPreferences);
 	ko.applyBindings(ameEasyHideModel, document.getElementById('ame-easy-hide-container'));
 
 	//Render categories lazily.
 	try {
-		let lazyUpdateTimer = null;
+		let lazyUpdateTimer: null|ReturnType<typeof setTimeout> = null;
 		const ameEhLazyLoad = new LazyLoad({
 			elements_selector: '.ame-eh-lazy-category',
 			unobserve_entered: true,
 			callback_enter: function (element) {
-				ameEasyHideModel.onCategoryEntersViewport(element);
+				//Type note: The instance is assigned above and should never be null here.
+				ameEasyHideModel!.onCategoryEntersViewport(element);
 			}
 		});
 
@@ -1140,7 +1147,7 @@ document.addEventListener('DOMContentLoaded', function () {
 			if (lazyUpdateTimer !== null) {
 				clearTimeout(lazyUpdateTimer);
 			}
-			lazyUpdateTimer = window.setTimeout(function () {
+			lazyUpdateTimer = setTimeout(function () {
 				lazyUpdateTimer = null;
 				ameEhLazyLoad.update();
 			}, 40);

@@ -4,6 +4,8 @@ require dirname(__FILE__) . '/ProductLicense.php';
 require dirname(__FILE__) . '/LicenseServer.php';
 require dirname(__FILE__) . '/BasicPluginLicensingUi.php';
 
+use YahnisElsts\PluginUpdateChecker\v5p0\Plugin;
+
 class Wslm_LicenseManagerClient {
 	const LICENSE_SCOPE_SITE = 'site';
 	const LICENSE_SCOPE_NETWORK = 'network';
@@ -30,7 +32,7 @@ class Wslm_LicenseManagerClient {
     /** @var Wslm_ProductLicense */
     private $license = null;
 
-    /** @var Puc_v4p11_Plugin_UpdateChecker */
+    /** @var Plugin\UpdateChecker */
     private $updateChecker = null;
 
     /**
@@ -449,7 +451,7 @@ class Wslm_LicenseManagerClient {
 	 * Register filters that will add license details to update requests and download URLs.
 	 * Add-ons can use this method to easily re-use the same license key as the main plugin.
 	 *
-	 * @param Puc_v4p11_Plugin_UpdateChecker $updateChecker
+	 * @param Plugin\UpdateChecker $updateChecker
 	 */
 	public function addUpdateFiltersTo($updateChecker) {
 		$updateChecker->addQueryArgFilter(array($this, 'filterUpdateChecks'));
@@ -473,9 +475,9 @@ class Wslm_LicenseManagerClient {
     }
 
     /**
-       * @param Puc_v4p11_Plugin_Info|null $pluginInfo
+       * @param Plugin\PluginInfo|null $pluginInfo
        * @param array $result
-       * @return Puc_v4p11_Plugin_Info|null
+       * @return Plugin\PluginInfo|null
        */
     public function refreshLicenseFromPluginInfo($pluginInfo, $result) {
 	    $this->lazyLoad();
@@ -493,8 +495,8 @@ class Wslm_LicenseManagerClient {
 	 * Add license data to the update download URL if we have a valid license,
 	 * or remove the URL (thus disabling one-click updates) if we don't.
 	 *
-	 * @param Puc_v4p11_Plugin_Update|Puc_v4p11_Plugin_Info $pluginInfo
-	 * @return Puc_v4p11_Plugin_Update|Puc_v4p11_Plugin_Info
+	 * @param Plugin\Update|Plugin\PluginInfo $pluginInfo
+	 * @return Plugin\Update|Plugin\PluginInfo
 	 */
 	public function filterUpdateDownloadUrl($pluginInfo) {
 		if ( isset($pluginInfo, $pluginInfo->download_url) && !empty($pluginInfo->download_url) ) {

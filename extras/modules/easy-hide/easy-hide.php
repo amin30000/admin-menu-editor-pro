@@ -112,7 +112,7 @@ class Core {
 			self::SCRIPT_HANDLE,
 			plugins_url('easy-hide.js', __FILE__),
 			[
-				'knockout',
+				'ame-knockout',
 				'jquery',
 				'ame-ko-extensions',
 				'ame-actor-selector',

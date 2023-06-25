@@ -1,9 +1,10 @@
+"use strict";
 ///<reference path="../../js/jquery.d.ts"/>
 ///<reference path="../../js/lodash-3.10.d.ts"/>
 ///<reference path="../../js/common.d.ts"/>
 //Idea: Maybe code generator that generates both TS/KO stuff and PHP classes with validation?
-var AmePlainMenuHeadingSettings = /** @class */ (function () {
-    function AmePlainMenuHeadingSettings() {
+class AmePlainMenuHeadingSettings {
+    constructor() {
         this.fontWeight = 'normal';
         this.fontSizeValue = 14;
         this.fontSizeUnit = 'px';
@@ -27,10 +28,9 @@ var AmePlainMenuHeadingSettings = /** @class */ (function () {
         this.collapsible = false;
         this.modificationTimestamp = 0;
     }
-    return AmePlainMenuHeadingSettings;
-}());
-var AmeMenuHeadingSettings = /** @class */ (function () {
-    function AmeMenuHeadingSettings() {
+}
+class AmeMenuHeadingSettings {
+    constructor() {
         this.defaults = new AmePlainMenuHeadingSettings();
         this.bottomBorder = {
             style: ko.observable(this.defaults.bottomBorder.style),
@@ -55,13 +55,13 @@ var AmeMenuHeadingSettings = /** @class */ (function () {
         this.collapsible = ko.observable(this.defaults.collapsible);
         this.modificationTimestamp = ko.observable(this.defaults.modificationTimestamp);
     }
-    AmeMenuHeadingSettings.prototype.setAll = function (settings) {
-        var newSettings = wsAmeLodash.defaults({}, settings, this.defaults);
+    setAll(settings) {
+        const newSettings = wsAmeLodash.defaults({}, settings, this.defaults);
         //The default object has all of the valid properties. We can use that to ensure that
         //we only copy or create relevant properties.
-        var properties = Object.keys(this.defaults);
-        for (var i = 0; i < properties.length; i++) {
-            var key = properties[i];
+        const properties = Object.keys(this.defaults);
+        for (let i = 0; i < properties.length; i++) {
+            const key = properties[i];
             if (typeof this[key] === 'undefined') {
                 this[key] = ko.observable(null);
             }
@@ -74,7 +74,7 @@ var AmeMenuHeadingSettings = /** @class */ (function () {
             this.bottomBorder.color((typeof settings.bottomBorder.color === 'string')
                 ? settings.bottomBorder.color
                 : this.defaults.bottomBorder.color);
-            var width = this.defaults.bottomBorder.width;
+            let width = this.defaults.bottomBorder.width;
             if (typeof settings.bottomBorder.width === 'string') {
                 width = parseInt(settings.bottomBorder.width, 10);
             }
@@ -83,14 +83,15 @@ var AmeMenuHeadingSettings = /** @class */ (function () {
             }
             this.bottomBorder.width(width);
         }
-    };
-    AmeMenuHeadingSettings.prototype.getAll = function () {
-        var result = {};
-        var properties = Object.keys(this.defaults);
-        for (var i = 0; i < properties.length; i++) {
-            var key = properties[i];
-            if (ko.isObservable(this[key])) {
-                result[key] = this[key]();
+    }
+    getAll() {
+        let result = {};
+        const properties = Object.keys(this.defaults);
+        for (let i = 0; i < properties.length; i++) {
+            const key = properties[i];
+            const value = this[key];
+            if (ko.isObservable(value)) {
+                result[key] = value();
             }
         }
         result.bottomBorder = {
@@ -99,32 +100,31 @@ var AmeMenuHeadingSettings = /** @class */ (function () {
             width: this.bottomBorder.width()
         };
         return result;
-    };
-    AmeMenuHeadingSettings.prototype.resetToDefault = function () {
-        for (var key in this.defaults) {
-            if (!this.defaults.hasOwnProperty(key) || !ko.isObservable(this[key])) {
-                continue;
+    }
+    resetToDefault() {
+        AmeMiniFunc.forEachObjectKey(this.defaults, (key, defaultValue) => {
+            const property = this[key];
+            if (property && ko.isObservable(property)) {
+                property(defaultValue);
             }
-            this[key](this.defaults[key]);
-        }
+        });
         this.bottomBorder.color(this.defaults.bottomBorder.color);
         this.bottomBorder.style(this.defaults.bottomBorder.style);
         this.bottomBorder.width(this.defaults.bottomBorder.width);
-    };
-    AmeMenuHeadingSettings.prototype.setDefaultFontSize = function (size, units) {
+    }
+    setDefaultFontSize(size, units) {
         this.defaults.fontSizeValue = size;
         this.defaults.fontSizeUnit = units;
-    };
-    return AmeMenuHeadingSettings;
-}());
-var AmeMenuHeadingSettingsScreen = /** @class */ (function () {
-    function AmeMenuHeadingSettingsScreen() {
+    }
+}
+class AmeMenuHeadingSettingsScreen {
+    constructor() {
         this.currentSavedSettings = null;
         this.dialog = null;
         this.settings = new AmeMenuHeadingSettings();
         this.isOpen = ko.observable(false);
     }
-    AmeMenuHeadingSettingsScreen.prototype.onConfirm = function () {
+    onConfirm() {
         //Change color settings back to default if the user hasn't specified a color.
         if (AmeMenuHeadingSettingsScreen.isEmptyColor(this.settings.textColor())) {
             this.settings.textColorType('default');
@@ -135,52 +135,51 @@ var AmeMenuHeadingSettingsScreen = /** @class */ (function () {
         this.settings.modificationTimestamp(Math.round(Date.now() / 1000));
         this.currentSavedSettings = this.settings.getAll();
         this.closeDialog();
-    };
-    AmeMenuHeadingSettingsScreen.prototype.onCancel = function () {
+    }
+    onCancel() {
         this.discardChanges();
         this.closeDialog();
-    };
-    AmeMenuHeadingSettingsScreen.prototype.closeDialog = function () {
+    }
+    closeDialog() {
         if (this.dialog) {
             this.dialog.dialog('close');
         }
-    };
-    AmeMenuHeadingSettingsScreen.isEmptyColor = function (color) {
+    }
+    static isEmptyColor(color) {
         if (typeof color !== 'string') {
             return true;
         }
         return (color === '');
-    };
-    AmeMenuHeadingSettingsScreen.prototype.setSettings = function (settings) {
+    }
+    setSettings(settings) {
         this.currentSavedSettings = settings;
         if (settings === null) {
             this.settings.resetToDefault();
             return;
         }
         this.settings.setAll(settings);
-    };
-    AmeMenuHeadingSettingsScreen.prototype.getSettings = function () {
+    }
+    getSettings() {
         return this.currentSavedSettings;
-    };
-    AmeMenuHeadingSettingsScreen.prototype.discardChanges = function () {
+    }
+    discardChanges() {
         if (this.currentSavedSettings !== null) {
             this.settings.setAll(this.currentSavedSettings);
         }
         else {
             this.settings.resetToDefault();
         }
-    };
-    AmeMenuHeadingSettingsScreen.prototype.setDialog = function ($dialog) {
+    }
+    setDialog($dialog) {
         this.dialog = $dialog;
-    };
-    AmeMenuHeadingSettingsScreen.prototype.setDefaultFontSize = function (pixels) {
+    }
+    setDefaultFontSize(pixels) {
         this.settings.setDefaultFontSize(pixels, 'px');
-    };
-    return AmeMenuHeadingSettingsScreen;
-}());
+    }
+}
 (function ($) {
-    var screen = null;
-    var currentSettings = null;
+    let screen = null;
+    let currentSettings = null;
     $(document)
         .on('menuConfigurationLoaded.adminMenuEditor', function (event, menuConfiguration) {
         currentSettings = menuConfiguration['menu_headings'] || null;
@@ -189,7 +188,7 @@ var AmeMenuHeadingSettingsScreen = /** @class */ (function () {
         }
     })
         .on('getMenuConfiguration.adminMenuEditor', function (event, menuConfiguration) {
-        var settings = (screen !== null) ? screen.getSettings() : currentSettings;
+        const settings = (screen !== null) ? screen.getSettings() : currentSettings;
         if (settings !== null) {
             menuConfiguration['menu_headings'] = settings;
         }
@@ -201,18 +200,18 @@ var AmeMenuHeadingSettingsScreen = /** @class */ (function () {
         //Populate heading settings with default values the first time the user creates a heading.
         //This is necessary to make the PHP module output heading CSS.
         if (!currentSettings && !screen) {
-            var defaultSettings = new AmeMenuHeadingSettings();
+            const defaultSettings = new AmeMenuHeadingSettings();
             currentSettings = defaultSettings.getAll();
         }
     });
     $(function () {
         function getDefaultMenuFontSize() {
-            var $menus = $('#adminmenumain #adminmenu li.menu-top')
+            const $menus = $('#adminmenumain #adminmenu li.menu-top')
                 .not('.wp-menu-separator')
                 .not('.ame-menu-heading-item')
                 .slice(0, 5)
                 .find('> a');
-            var mostCommonSize = wsAmeLodash.chain($menus)
+            const mostCommonSize = wsAmeLodash.chain($menus)
                 .countBy(function (menu) {
                 return $(menu).css('fontSize');
             })
@@ -221,9 +220,9 @@ var AmeMenuHeadingSettingsScreen = /** @class */ (function () {
                 .last()
                 .value();
             if (mostCommonSize && (mostCommonSize.length >= 1) && wsAmeLodash.isString(mostCommonSize[0])) {
-                var matches = mostCommonSize[0].match(/^(\d+)px$/i);
-                if (matches.length > 0) {
-                    var result = parseInt(matches[1], 10);
+                let matches = mostCommonSize[0].match(/^(\d+)px$/i);
+                if ((matches !== null) && (matches.length > 0)) {
+                    let result = parseInt(matches[1], 10);
                     if (result > 0) {
                         return result;
                     }
@@ -231,8 +230,8 @@ var AmeMenuHeadingSettingsScreen = /** @class */ (function () {
             }
             return 14; //Default menu font size in WP 5.6.
         }
-        var headingDialog = $('#ws-ame-menu-heading-settings');
-        var isDialogInitialized = false;
+        const headingDialog = $('#ws-ame-menu-heading-settings');
+        let isDialogInitialized = false;
         function initializeHeadingDialog() {
             screen = new AmeMenuHeadingSettingsScreen();
             screen.setDefaultFontSize(getDefaultMenuFontSize());
@@ -255,7 +254,9 @@ var AmeMenuHeadingSettingsScreen = /** @class */ (function () {
             if (!isDialogInitialized) {
                 initializeHeadingDialog();
             }
-            screen.discardChanges();
+            if (screen) {
+                screen.discardChanges();
+            }
             headingDialog.dialog('open');
         });
     });

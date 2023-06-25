@@ -393,7 +393,7 @@ class ameTweakManager extends amePersistentModule {
 			plugins_url('tweak-manager.js', __FILE__),
 			array(
 				'ame-lodash',
-				'knockout',
+				'ame-knockout',
 				'ame-actor-selector',
 				'ame-jquery-cookie',
 				'ame-ko-extensions',

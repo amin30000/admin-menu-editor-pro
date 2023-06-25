@@ -5,14 +5,8 @@
 /// <reference path="../../../js/jquery.biscuit.d.ts" />
 /// <reference path="../../ko-extensions.ts" />
 
-declare let ameTweakManager: AmeTweakManagerModule;
+let ameTweakManager: AmeTweakManagerModule;
 declare const wsTweakManagerData: AmeTweakManagerScriptData;
-
-declare const wp: {
-	codeEditor: {
-		initialize: (textarea: string, options: object) => any;
-	};
-};
 
 interface AmeTweakManagerScriptData {
 	selectedActor: string;
@@ -63,7 +57,7 @@ abstract class AmeSetting extends AmeNamedNode {
 	protected static idCounter = 0;
 
 	// noinspection JSUnusedGlobalSymbols Used in Knockout templates.
-	templateName: string;
+	templateName: string = '';
 	inputValue: KnockoutObservable<any>;
 	readonly uniqueInputId: string;
 
@@ -85,7 +79,7 @@ interface AmeStringSettingProperties extends AmeSettingProperties {
 }
 
 class AmeStringSetting extends AmeSetting {
-	syntaxHighlightingOptions: object = null;
+	syntaxHighlightingOptions: object | null = null;
 
 	constructor(
 		properties: AmeStringSettingProperties,
@@ -158,7 +152,7 @@ type ConfigurationNodeProperties = AmeActorFeatureProperties | AmeSettingPropert
 
 class AmeSettingStore {
 	private observableProperties: Record<string, KnockoutObservable<any>> = {};
-	private accessMaps: Record<string, AmeObservableActorSettings> = {};
+	private accessMaps: Record<string, AmeObservableActorFeatureMap> = {};
 	private readonly initialProperties: Record<string, any>;
 
 	constructor(initialProperties: Record<string, any> = {}) {
@@ -195,10 +189,17 @@ class AmeSettingStore {
 		const _ = AmeTweakManagerModule._;
 		let newProps = {};
 		_.forOwn(this.observableProperties, function (observable, path) {
+			if (typeof path === 'undefined') {
+				return;
+			}
 			_.set(newProps, path, observable());
 		});
 
-		_.forOwn(this.accessMaps, function (map, path: string) {
+		_.forOwn(this.accessMaps, function (map, path) {
+			if (typeof path === 'undefined') {
+				return;
+			}
+
 			//Since all tweaks are disabled by default, having a tweak disabled for a role is the same
 			//as not having a setting, so we can save some space by removing it. This does not always
 			//apply to users/Super Admins because they can have precedence over roles.
@@ -234,13 +235,13 @@ class AmeSettingStore {
 		name: string,
 		path: string | string[] = [],
 		defaultAccessMap: AmeDictionary<boolean> | null = null
-	): AmeObservableActorSettings {
+	): AmeObservableActorFeatureMap {
 		path = this.getFullPath(name, path);
 		const _ = AmeTweakManagerModule._;
 		const value = _.get(this.initialProperties, path, defaultAccessMap);
 
 		if (!this.accessMaps.hasOwnProperty(path)) {
-			this.accessMaps[path] = new AmeObservableActorSettings(value);
+			this.accessMaps[path] = new AmeObservableActorFeatureMap(value);
 
 		}
 		return this.accessMaps[path];
@@ -253,15 +254,15 @@ function isSettingStore(thing: object): thing is AmeSettingStore {
 }
 
 class AmeCompositeNode extends AmeNamedNode {
-	children: KnockoutObservableArray<AmeNamedNode> = null;
-	propertyPath: string[];
-	actorAccess: AmeActorAccess;
-	properties: AmeSettingStore;
+	children: KnockoutObservableArray<AmeNamedNode>;
+	propertyPath: string[] = [];
+	actorAccess: AmeActorAccess | null = null;
+	properties: AmeSettingStore | null = null;
 
-	constructor(
+	protected constructor(
 		properties: ConfigurationNodeProperties,
 		module: AmeTweakManagerModule,
-		store: AmeSettingStore | 'self' = null,
+		store: AmeSettingStore | 'self',
 		path: string[] = []
 	) {
 		super(properties);
@@ -285,7 +286,7 @@ class AmeCompositeNode extends AmeNamedNode {
 				this.propertyPath = path.concat(this.propertyPath);
 			}
 
-			let children = [];
+			let children: AmeNamedNode[] = [];
 			if (properties.children && (properties.children.length > 0)) {
 				for (let i = 0; i < properties.children.length; i++) {
 					const props = properties.children[i];
@@ -302,6 +303,8 @@ class AmeCompositeNode extends AmeNamedNode {
 			}
 
 			this.children = ko.observableArray(children);
+		} else {
+			this.children = ko.observableArray([] as AmeNamedNode[]);
 		}
 
 		if (isAmeActorFeatureProperties(properties)) {
@@ -320,7 +323,7 @@ class AmeCompositeNode extends AmeNamedNode {
 		module: AmeTweakManagerModule,
 		store: AmeSettingStore,
 		path: string[] = []
-	): AmeSetting {
+	): AmeSetting | null {
 		const inputType = properties.inputType ? properties.inputType : properties.dataType;
 
 		switch (inputType) {
@@ -343,14 +346,14 @@ class AmeCompositeNode extends AmeNamedNode {
 
 class AmeActorAccess {
 	isChecked: KnockoutComputed<boolean>;
-	protected enabledForActor: AmeObservableActorSettings;
+	protected enabledForActor: AmeObservableActorFeatureMap;
 	protected module: AmeTweakManagerModule;
 	isIndeterminate: KnockoutComputed<boolean>;
 
 	constructor(
-		actorSettings: AmeObservableActorSettings,
+		actorSettings: AmeObservableActorFeatureMap,
 		module: AmeTweakManagerModule,
-		children: AmeCompositeNode['children'] = null
+		children: AmeCompositeNode['children'] | null = null
 	) {
 		this.module = module;
 		this.enabledForActor = actorSettings;
@@ -450,8 +453,8 @@ interface AmeSavedTweakProperties {
 
 interface AmeTweakProperties extends AmeSavedTweakProperties, AmeActorFeatureProperties {
 	description?: string;
-	parentId?: string;
-	sectionId?: string;
+	parentId?: string | null;
+	sectionId?: string | null;
 
 	isUserDefined?: boolean;
 	typeId?: string;
@@ -464,10 +467,10 @@ class AmeTweakItem extends AmeCompositeNode {
 	label: KnockoutObservable<string>;
 
 	public readonly isUserDefined: boolean;
-	private readonly initialProperties: AmeSavedTweakProperties = null;
+	private readonly initialProperties: AmeSavedTweakProperties | null = null;
 
-	private section: AmeTweakSection = null;
-	private parent: AmeTweakItem = null;
+	private section: AmeTweakSection | null = null;
+	private parent: AmeTweakItem | null = null;
 
 	constructor(properties: AmeTweakProperties, module: AmeTweakManagerModule) {
 		super(properties, module, 'self');
@@ -507,10 +510,12 @@ class AmeTweakItem extends AmeCompositeNode {
 			props.sectionId = this.section ? this.section.id : null;
 			props.parentId = this.parent ? this.parent.id : null;
 
-			props = _.defaults(
-				props,
-				_.omit(this.initialProperties, 'userInputValue', 'enabledForActor')
-			);
+			if (this.initialProperties !== null) {
+				props = _.defaults(
+					props,
+					_.omit(this.initialProperties, 'userInputValue', 'enabledForActor')
+				);
+			}
 			return props;
 		}
 	}
@@ -525,11 +530,11 @@ class AmeTweakItem extends AmeCompositeNode {
 		return this;
 	}
 
-	getSection(): AmeTweakSection {
+	getSection(): AmeTweakSection | null {
 		return this.section;
 	}
 
-	getParent(): AmeTweakItem {
+	getParent(): AmeTweakItem | null {
 		return this.parent;
 	}
 
@@ -543,18 +548,20 @@ class AmeTweakItem extends AmeCompositeNode {
 		this.children.remove(tweak);
 	}
 
-	getEditableProperty(key: string): KnockoutObservable<any> {
+	getEditableProperty(key: string): KnockoutObservable<any> | null {
 		if (this.properties) {
 			return this.properties.getObservableProperty(key, '');
 		}
+		return null;
 	}
 
 	getTypeId(): string | null {
 		if (!this.isUserDefined || !this.initialProperties) {
 			return null;
 		}
-		if ((this.initialProperties as AmeTweakProperties).typeId) {
-			return (this.initialProperties as AmeTweakProperties).typeId;
+		const tweakProps = this.initialProperties as AmeTweakProperties;
+		if ((typeof tweakProps.typeId === 'string') && (tweakProps.typeId !== '')) {
+			return tweakProps.typeId;
 		}
 		return null;
 	}
@@ -572,13 +579,13 @@ class AmeTweakSection {
 	tweaks: KnockoutObservableArray<AmeTweakItem>;
 	isOpen: KnockoutObservable<boolean>;
 
-	footerTemplateName: string = null;
+	footerTemplateName: string | null = null;
 
 	constructor(properties: AmeSectionProperties) {
 		this.id = properties.id;
 		this.label = properties.label;
 		this.isOpen = ko.observable<boolean>(true);
-		this.tweaks = ko.observableArray([]);
+		this.tweaks = ko.observableArray([] as AmeTweakItem[]);
 	}
 
 	addTweak(tweak: AmeTweakItem) {
@@ -604,8 +611,8 @@ class AmeTweakManagerModule {
 	static readonly openSectionCookieName = 'ame_tmce_open_sections';
 
 	readonly actorSelector: AmeActorSelector;
-	selectedActorId: KnockoutComputed<string>;
-	selectedActor: KnockoutComputed<IAmeActor>;
+	selectedActorId: KnockoutComputed<string|null>;
+	selectedActor: KnockoutComputed<IAmeActor | null>;
 
 	private tweaksById: { [id: string]: AmeTweakItem } = {};
 	private sectionsById: AmeDictionary<AmeTweakSection> = {};
@@ -626,7 +633,7 @@ class AmeTweakManagerModule {
 
 		this.actorSelector = new AmeActorSelector(AmeActors, scriptData.isProVersion);
 		this.selectedActorId = this.actorSelector.createKnockoutObservable(ko);
-		this.selectedActor = ko.computed<IAmeActor>(() => {
+		this.selectedActor = ko.computed<IAmeActor | null>(() => {
 			const id = this.selectedActorId();
 			if (id === null) {
 				return null;
@@ -690,7 +697,7 @@ class AmeTweakManagerModule {
 		//The user can open/close sections and we automatically remember their state.
 		this.openSectionIds = ko.computed<string[]>({
 			read: () => {
-				let result = [];
+				let result: string[] = [];
 				_.forEach(this.sections, section => {
 					if (section.isOpen()) {
 						result.push(section.id);
@@ -707,7 +714,7 @@ class AmeTweakManagerModule {
 		});
 		this.openSectionIds.extend({rateLimit: {timeout: 1000, method: 'notifyWhenChangesStop'}});
 
-		let initialState: string[] = null;
+		let initialState: string[] | null = null;
 		let cookieValue = jQuery.cookie(AmeTweakManagerModule.openSectionCookieName);
 		if ((typeof cookieValue === 'string') && JSON && JSON.parse) {
 			let storedState = JSON.parse(cookieValue);
@@ -828,7 +835,7 @@ class AmeTweakManagerModule {
 }
 
 class AmeEditAdminCssDialog implements AmeKnockoutDialog {
-	jQueryWidget: JQuery;
+	jQueryWidget: JQuery | null = null;
 	isOpen: KnockoutObservable<boolean>;
 	autoCancelButton: boolean = false;
 
@@ -840,9 +847,9 @@ class AmeEditAdminCssDialog implements AmeKnockoutDialog {
 	tweakLabel: KnockoutObservable<string>;
 	cssCode: KnockoutObservable<string>;
 	confirmButtonText: KnockoutObservable<string>;
-	title: KnockoutObservable<string>;
+	title: KnockoutObservable<string|null>;
 
-	selectedTweak: AmeTweakItem = null;
+	selectedTweak: AmeTweakItem | null = null;
 
 	private manager: AmeTweakManagerModule;
 
@@ -861,7 +868,7 @@ class AmeEditAdminCssDialog implements AmeKnockoutDialog {
 		this.isOpen = ko.observable(false);
 	}
 
-	onOpen(event, ui) {
+	onOpen(event: JQueryEventObject, ui: any) {
 		if (this.selectedTweak) {
 			this.tweakLabel(this.selectedTweak.label());
 			this.title('Edit admin CSS snippet');
@@ -881,7 +888,10 @@ class AmeEditAdminCssDialog implements AmeKnockoutDialog {
 		if (this.selectedTweak) {
 			//Update the existing tweak.
 			this.selectedTweak.label(this.tweakLabel());
-			this.selectedTweak.getEditableProperty('css')(this.cssCode());
+			const propertyObservable = this.selectedTweak.getEditableProperty('css');
+			if (propertyObservable !== null) {
+				propertyObservable(this.cssCode());
+			}
 		} else {
 			//Create a new tweak.
 			this.manager.addAdminCssTweak(
@@ -904,111 +914,6 @@ class AmeEditAdminCssDialog implements AmeKnockoutDialog {
 		this.isOpen(true);
 	}
 }
-
-ko.bindingHandlers.ameCodeMirror = {
-	init: function (element, valueAccessor, allBindings) {
-		if (!wp.hasOwnProperty('codeEditor') || !wp.codeEditor.initialize) {
-			return;
-		}
-		let parameters = ko.unwrap(valueAccessor());
-		if (!parameters) {
-			return;
-		}
-
-		let options;
-		let refreshTrigger: KnockoutObservable<any>;
-		if (parameters.options) {
-			options = parameters.options;
-			if (parameters.refreshTrigger) {
-				refreshTrigger = parameters.refreshTrigger;
-			}
-		} else {
-			options = parameters;
-		}
-
-		let result = wp.codeEditor.initialize(element, options);
-		const cm = result.codemirror;
-
-		//Synchronise the editor contents with the observable passed to the "value" binding.
-		let valueObservable: KnockoutObservable<any> = allBindings.get('value');
-		if (!ko.isObservable(valueObservable)) {
-			valueObservable = null;
-		}
-
-		let subscription = null;
-		let changeHandler = null;
-		if (valueObservable !== null) {
-			//Update the observable when the contents of the editor change.
-			let ignoreNextUpdate = false;
-			changeHandler = function () {
-				//This will trigger our observable subscription (see below).
-				//We need to ignore that trigger to avoid recursive or duplicated updates.
-				ignoreNextUpdate = true;
-				valueObservable(cm.doc.getValue());
-			};
-			cm.on('changes', changeHandler);
-
-			//Update the editor when the observable changes.
-			subscription = valueObservable.subscribe(function (newValue) {
-				if (ignoreNextUpdate) {
-					ignoreNextUpdate = false;
-					return;
-				}
-				cm.doc.setValue(newValue);
-				ignoreNextUpdate = false;
-			});
-		}
-
-		//Refresh the size of the editor element when an observable changes value.
-		let refreshSubscription: KnockoutSubscription = null;
-		if (refreshTrigger) {
-			refreshSubscription = refreshTrigger.subscribe(function () {
-				cm.refresh();
-			});
-		}
-
-		//If the editor starts out hidden - for example, because it's inside a collapsed section - it will
-		//render incorrectly. To fix that, let's refresh it the first time it becomes visible.
-		if (!jQuery(element).is(':visible') && (typeof IntersectionObserver !== 'undefined')) {
-			const observer = new IntersectionObserver(
-				function (entries) {
-					for (let i = 0; i < entries.length; i++) {
-						if (entries[i].isIntersecting) {
-							//The editor is at least partially visible now.
-							observer.disconnect();
-							cm.refresh();
-							break;
-						}
-					}
-				},
-				{
-					//Use the browser viewport.
-					root: null,
-					//The threshold is somewhat arbitrary. Any value will work, but a lower setting means
-					//that the user is less likely to see an incorrectly rendered editor.
-					threshold: 0.05
-				}
-			);
-			observer.observe(cm.getWrapperElement());
-		}
-
-		ko.utils.domNodeDisposal.addDisposeCallback(element, function () {
-			//Remove subscriptions and event handlers.
-			if (subscription) {
-				subscription.dispose();
-			}
-			if (refreshSubscription) {
-				refreshSubscription.dispose();
-			}
-			if (changeHandler) {
-				cm.off('changes', changeHandler);
-			}
-
-			//Destroy the CodeMirror instance.
-			jQuery(cm.getWrapperElement()).remove();
-		});
-	}
-};
 
 jQuery(function () {
 	ameTweakManager = new AmeTweakManagerModule(wsTweakManagerData);

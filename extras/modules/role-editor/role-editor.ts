@@ -11,7 +11,7 @@ class RexPermission {
 	public readonly capability: RexCapability;
 
 	labelHtml: KnockoutComputed<string>;
-	protected readableAction: string = null;
+	protected readableAction: string | null = null;
 
 	mainDescription: string = '';
 
@@ -122,7 +122,7 @@ class RexObservableCapabilityMap {
 		}
 	}
 
-	getCapabilityState(capabilityName: string): boolean {
+	getCapabilityState(capabilityName: string): boolean | null {
 		const observable = this.getObservable(capabilityName);
 		return observable();
 	}
@@ -137,6 +137,10 @@ class RexObservableCapabilityMap {
 
 		let result = this.initialCapabilities ? _.clone(this.initialCapabilities) : {};
 		_.forEach(this.capabilities, function (observable, name) {
+			if (typeof name === 'undefined') {
+				return;
+			}
+
 			const isGranted = observable();
 			if (isGranted === null) {
 				delete result[name];
@@ -221,6 +225,10 @@ abstract class RexBaseActor implements IAmeActor {
 	getOwnCapabilities(): CapabilityMap {
 		return this.capabilities.getAllCapabilities();
 	}
+
+	isUser(): this is IAmeUser {
+		return false;
+	}
 }
 
 class RexRole extends RexBaseActor {
@@ -258,7 +266,7 @@ class RexRole extends RexBaseActor {
 }
 
 class RexSuperAdmin extends RexBaseActor {
-	private static instance: RexSuperAdmin = null;
+	private static instance: RexSuperAdmin | null = null;
 
 	protected constructor() {
 		super('special:super_admin', 'Super Admin', 'Super Admin');
@@ -282,15 +290,15 @@ class RexUser extends RexBaseActor implements IAmeUser {
 		super('user:' + login, login, displayName, capabilities);
 		this.userLogin = login;
 		this.canHaveRoles = true;
-		this.roles = ko.observableArray([]);
-		this.userId = userId;
+		this.roles = ko.observableArray([] as RexRole[]);
+		this.userId = userId || 0;
 	}
 
 	hasCap(capability: string, outGrantedBy?: RexBaseActor[]): boolean {
 		return (this.getCapabilityState(capability, outGrantedBy) === true);
 	}
 
-	getCapabilityState(capability: string, outGrantedBy?: RexBaseActor[]): boolean {
+	getCapabilityState(capability: string, outGrantedBy?: RexBaseActor[]): boolean | null {
 		if (capability === 'do_not_allow') {
 			return false;
 		}
@@ -326,7 +334,12 @@ class RexUser extends RexBaseActor implements IAmeUser {
 	// noinspection JSUnusedGlobalSymbols Used in KO templates.
 	getInheritanceDetails(capability: RexCapability): any[] {
 		const _ = wsAmeLodash;
-		let results = [];
+		let results: {
+			actor: IAmeActor,
+			name: string,
+			description: string,
+			isDecisive?: boolean
+		}[] = [];
 		//Note: Alternative terms include "Assigned", "Granted", "Yes"/"No".
 
 		if (this.isSuperAdmin) {
@@ -374,7 +387,7 @@ class RexUser extends RexBaseActor implements IAmeUser {
 			description: description,
 		});
 
-		let relevantActors = [];
+		let relevantActors: RexBaseActor[] = [];
 		this.getCapabilityState(capability.name, relevantActors);
 		const decidingActor = _.last(relevantActors);
 		_.each(results, function (item) {
@@ -382,6 +395,10 @@ class RexUser extends RexBaseActor implements IAmeUser {
 		});
 
 		return results;
+	}
+
+	isUser(): this is IAmeUser {
+		return true;
 	}
 
 	static fromAmeUser(data: AmeUser, editor: RexRoleEditor) {
@@ -420,6 +437,10 @@ class RexUser extends RexBaseActor implements IAmeUser {
 			roles: roles
 		};
 	}
+
+	getRoleIds(): string[] {
+		return wsAmeLodash.map(this.roles(), 'name');
+	}
 }
 
 interface RexStorableRoleData {
@@ -447,15 +468,15 @@ interface RexUserData extends RexStorableUserData {
 type RexCategoryComparisonCallback = (a: RexCategory, b: RexCategory) => number;
 
 class RexCategory {
-	slug: string = null;
+	readonly slug: string | null = null;
 
 	name: string;
 	permissions: KnockoutObservableArray<RexPermission>;
-	origin: RexWordPressComponent = null;
-	subtitle: string = null;
-	htmlId: string = null;
+	origin: RexWordPressComponent | null = null;
+	subtitle: string | null = null;
+	htmlId: string | null = null;
 
-	parent: RexCategory = null;
+	parent: RexCategory | null = null;
 	subheading: KnockoutObservable<string>;
 	subcategories: RexCategory[] = [];
 
@@ -498,7 +519,7 @@ class RexCategory {
 
 	protected duplicates: RexCategory[] = [];
 
-	constructor(name: string, editor: RexRoleEditor, slug: string = null, capabilities: string[] = []) {
+	constructor(name: string, editor: RexRoleEditor, slug: string | null = null, capabilities: string[] = []) {
 		const _ = wsAmeLodash;
 		const self = this;
 		this.editor = editor;
@@ -640,7 +661,7 @@ class RexCategory {
 
 				//Hide it if not inside the selected category.
 				let isInSelectedCategory = false,
-					temp: RexCategory = self;
+					temp: RexCategory | null = self;
 				while (temp !== null) {
 					if (temp.isSelected()) {
 						isInSelectedCategory = true;
@@ -740,7 +761,9 @@ class RexCategory {
 
 		if (this.slug) {
 			this.isNavExpanded.subscribe((newValue: boolean) => {
-				editor.userPreferences.collapsedCategories.toggle(this.slug, !newValue);
+				//Type node: Because the slug is only assigned in the constructor, we can assume
+				//it won't become null if it's not null now.
+				editor.userPreferences.collapsedCategories.toggle(this.slug!, !newValue);
 			});
 		}
 
@@ -851,12 +874,16 @@ class RexCategory {
 	 * The default sort is alphabetical, but subclasses can override this method to specify a custom order.
 	 */
 	sortPermissions() {
-		this.permissions.sort(function (a, b) {
-			return a.capability.name.toLowerCase().localeCompare(b.capability.name.toLowerCase());
+		this.permissions.sort((a, b) => {
+			return this.compareBasicPermissions(a, b);
 		});
 	}
 
-	countUniqueCapabilities(accumulator: AmeDictionary<boolean> = {}, predicate: Function = null): number {
+	protected compareBasicPermissions(a: RexPermission, b: RexPermission): number {
+		return a.capability.name.toLowerCase().localeCompare(b.capability.name.toLowerCase());
+	}
+
+	countUniqueCapabilities(accumulator: AmeDictionary<boolean> = {}, predicate: Function | null = null): number {
 		let total = 0;
 		const permissions = this.permissions();
 
@@ -883,21 +910,23 @@ class RexCategory {
 		return total;
 	}
 
-	protected findCategoryBySlug(slug: string): RexCategory {
+	protected findCategoryBySlug(slug: string): RexCategory | null {
 		if (this.editor.categoriesBySlug.hasOwnProperty(slug)) {
 			return this.editor.categoriesBySlug[slug];
 		}
 		return null;
 	}
 
-	static fromJs(details: RexCategoryData, editor: RexRoleEditor): RexCategory {
-		let category;
-		if (details.variant && details.variant === 'post_type') {
+	static fromJs(details: RexAnyCategoryData, editor: RexRoleEditor): RexCategory {
+		let category: RexCategory;
+		if (!details.variant) {
+			category = new RexCategory(details.name, editor, details.slug, details.capabilities);
+		} else if (details.variant && details.variant === 'post_type') {
 			category = new RexPostTypeCategory(details.name, editor, details.contentTypeId, details.slug, details.permissions);
 		} else if (details.variant && details.variant === 'taxonomy') {
 			category = new RexTaxonomyCategory(details.name, editor, details.contentTypeId, details.slug, details.permissions);
 		} else {
-			category = new RexCategory(details.name, editor, details.slug, details.capabilities);
+			throw new Error('Unknown category data variant: ' + ((details as any).variant ?? 'undefined'));
 		}
 
 		if (details.componentId) {
@@ -965,10 +994,10 @@ interface RexContentTypePermission extends RexPermission {
 
 abstract class RexContentTypeCategory extends RexCategory {
 	public actions: { [action: string]: RexContentTypePermission } = {};
-	protected baseCategorySlug: string = null;
+	protected baseCategorySlug: string | null = null;
 	isBaseCapNoticeVisible: KnockoutComputed<boolean>;
 
-	protected constructor(name: string, editor: RexRoleEditor, slug: string = null) {
+	protected constructor(name: string, editor: RexRoleEditor, slug: string | null = null) {
 		super(name, editor, slug);
 
 		this.isBaseCapNoticeVisible = ko.pureComputed({
@@ -1006,7 +1035,7 @@ abstract class RexContentTypeCategory extends RexCategory {
 		return allCapsMatch;
 	}
 
-	protected getBaseCategory(): RexContentTypeCategory {
+	protected getBaseCategory(): RexContentTypeCategory | null {
 		if (this.baseCategorySlug !== null) {
 			let result = this.findCategoryBySlug(this.baseCategorySlug);
 			if (result instanceof RexContentTypeCategory) {
@@ -1072,7 +1101,7 @@ class RexPostTypeCategory extends RexContentTypeCategory {
 		name: string,
 		editor: RexRoleEditor,
 		postTypeId: string,
-		slug: string = null,
+		slug: string | null = null,
 		permissions: { [action: string]: string },
 		isDefault: boolean = false
 	) {
@@ -1090,6 +1119,10 @@ class RexPostTypeCategory extends RexContentTypeCategory {
 		}
 
 		this.permissions = ko.observableArray(_.map(permissions, (capability, action) => {
+			if (typeof action === 'undefined') {
+				throw new Error('Invalid action name: undefined. This should never happen.');
+			}
+
 			const permission = new RexPostTypePermission(editor, editor.getCapability(capability), action, this.pluralLabel);
 
 			//The "read" capability is already shown in the core category and every role has it by default.
@@ -1098,14 +1131,15 @@ class RexPostTypeCategory extends RexContentTypeCategory {
 			}
 
 			this.actions[action] = permission;
-			return permission;
+			return permission as RexPermission;
 		}));
 
 		this.sortPermissions();
 
+		type ActionMapItem = (typeof this.actions[string]);
 		//The "create" capability is often the same as the "edit" capability.
-		const editPerm = _.get(this.actions, 'edit_posts', null),
-			createPerm = _.get(this.actions, 'create_posts', null);
+		const editPerm = _.get<ActionMapItem | null>(this.actions, 'edit_posts', null),
+			createPerm = _.get<ActionMapItem | null>(this.actions, 'create_posts', null);
 		if (editPerm && createPerm && (createPerm.capability.name === editPerm.capability.name)) {
 			createPerm.isRedundant = true;
 		}
@@ -1117,16 +1151,19 @@ class RexPostTypeCategory extends RexContentTypeCategory {
 	}
 
 	sortPermissions() {
-		this.permissions.sort(function (a: RexPostTypePermission, b: RexPostTypePermission) {
-			const priorityA = RexPostTypeCategory.desiredActionOrder.hasOwnProperty(a.action) ? RexPostTypeCategory.desiredActionOrder[a.action] : 1000;
-			const priorityB = RexPostTypeCategory.desiredActionOrder.hasOwnProperty(b.action) ? RexPostTypeCategory.desiredActionOrder[b.action] : 1000;
+		this.permissions.sort((a, b)=> {
+			if ((a instanceof RexPostTypePermission) && (b instanceof RexPostTypePermission)) {
+				const priorityA = RexPostTypeCategory.desiredActionOrder.hasOwnProperty(a.action) ? RexPostTypeCategory.desiredActionOrder[a.action] : 1000;
+				const priorityB = RexPostTypeCategory.desiredActionOrder.hasOwnProperty(b.action) ? RexPostTypeCategory.desiredActionOrder[b.action] : 1000;
 
-			let delta = priorityA - priorityB;
-			if (delta !== 0) {
-				return delta;
+				let delta = priorityA - priorityB;
+				if (delta !== 0) {
+					return delta;
+				}
+
+				return a.capability.name.localeCompare(b.capability.name);
 			}
-
-			return a.capability.name.localeCompare(b.capability.name);
+			return this.compareBasicPermissions(a, b);
 		});
 	}
 
@@ -1174,7 +1211,7 @@ class RexTaxonomyCategory extends RexContentTypeCategory {
 		name: string,
 		editor: RexRoleEditor,
 		taxonomyId: string,
-		slug: string = null,
+		slug: string | null = null,
 		permissions: { [action: string]: string }
 	) {
 		super(name, editor, slug);
@@ -1185,7 +1222,12 @@ class RexTaxonomyCategory extends RexContentTypeCategory {
 		this.subtitle = taxonomyId;
 
 		const noun = name.toLowerCase();
-		this.permissions = ko.observableArray(_.map(permissions, (capability, action) => {
+		this.permissions = ko.observableArray<RexPermission>(_.map(permissions, (capability, action) => {
+			if (typeof action === 'undefined') {
+				//Can't happen in practice, but TypeScript doesn't know that.
+				throw new Error('Invalid action name: undefined. This should never happen.');
+			}
+
 			const permission = new RexTaxonomyPermission(editor, editor.getCapability(capability), action, noun);
 			this.actions[action] = permission;
 			return permission;
@@ -1212,16 +1254,19 @@ class RexTaxonomyCategory extends RexContentTypeCategory {
 	}
 
 	sortPermissions(): void {
-		this.permissions.sort(function (a: RexTaxonomyPermission, b: RexTaxonomyPermission) {
-			const priorityA = RexTaxonomyCategory.desiredActionOrder.hasOwnProperty(a.action) ? RexTaxonomyCategory.desiredActionOrder[a.action] : 1000;
-			const priorityB = RexTaxonomyCategory.desiredActionOrder.hasOwnProperty(b.action) ? RexTaxonomyCategory.desiredActionOrder[b.action] : 1000;
+		this.permissions.sort((a: RexPermission, b: RexPermission) => {
+			if ((a instanceof RexTaxonomyPermission) && (b instanceof RexTaxonomyPermission)) {
+				const priorityA = RexTaxonomyCategory.desiredActionOrder.hasOwnProperty(a.action) ? RexTaxonomyCategory.desiredActionOrder[a.action] : 1000;
+				const priorityB = RexTaxonomyCategory.desiredActionOrder.hasOwnProperty(b.action) ? RexTaxonomyCategory.desiredActionOrder[b.action] : 1000;
 
-			let delta = priorityA - priorityB;
-			if (delta !== 0) {
-				return delta;
+				let delta = priorityA - priorityB;
+				if (delta !== 0) {
+					return delta;
+				}
+
+				return a.capability.name.localeCompare(b.capability.name);
 			}
-
-			return a.capability.name.localeCompare(b.capability.name);
+			return this.compareBasicPermissions(a, b);
 		});
 	}
 
@@ -1237,11 +1282,11 @@ interface RexPermissionTableColumn {
 	actions: string[];
 }
 
-class RexTableViewCategory extends RexCategory {
-	tableColumns: KnockoutComputed<RexPermissionTableColumn[]>;
-	subcategoryComparisonCallback: RexCategoryComparisonCallback = null;
+abstract class RexTableViewCategory extends RexCategory {
+	abstract tableColumns: KnockoutComputed<RexPermissionTableColumn[]>;
+	subcategoryComparisonCallback: RexCategoryComparisonCallback;
 
-	constructor(name: string, editor: RexRoleEditor, slug: string = null) {
+	protected constructor(name: string, editor: RexRoleEditor, slug: string | null = null) {
 		super(name, editor, slug);
 
 		this.contentTemplate = ko.pureComputed(function () {
@@ -1284,7 +1329,9 @@ class RexTableViewCategory extends RexCategory {
 }
 
 class RexTaxonomyContainerCategory extends RexTableViewCategory {
-	constructor(name: string, editor: RexRoleEditor, slug: string = null) {
+	tableColumns: KnockoutComputed<RexPermissionTableColumn[]>;
+
+	constructor(name: string, editor: RexRoleEditor, slug: string | null = null) {
 		super(name, editor, slug);
 
 		this.htmlId = 'rex-taxonomy-summary-category';
@@ -1312,7 +1359,7 @@ class RexTaxonomyContainerCategory extends RexTableViewCategory {
 						actions: ['delete_terms']
 					}
 				];
-				let misColumnExists = false, miscColumn: RexPermissionTableColumn = null;
+				let miscColumn: RexPermissionTableColumn | null = null;
 
 				for (let i = 0; i < this.subcategories.length; i++) {
 					const category = this.subcategories[i];
@@ -1323,7 +1370,7 @@ class RexTaxonomyContainerCategory extends RexTableViewCategory {
 					//Display any unrecognized actions in a "Misc" column.
 					const customActions = _.omit(category.actions, defaultTaxonomyActions);
 					if (!_.isEmpty(customActions)) {
-						if (!misColumnExists) {
+						if (!miscColumn) {
 							miscColumn = {title: 'Misc', actions: []};
 							columns.push(miscColumn);
 						}
@@ -1339,7 +1386,9 @@ class RexTaxonomyContainerCategory extends RexTableViewCategory {
 }
 
 class RexPostTypeContainerCategory extends RexTableViewCategory {
-	constructor(name: string, editor: RexRoleEditor, slug: string = null) {
+	tableColumns: KnockoutComputed<RexPermissionTableColumn[]>;
+
+	constructor(name: string, editor: RexRoleEditor, slug: string | null = null) {
 		super(name, editor, slug);
 
 		/* Note: This seems like poor design because the superclass overrides subclass
@@ -1347,23 +1396,27 @@ class RexPostTypeContainerCategory extends RexTableViewCategory {
 		 * come up with anything better so far. Might be something to revisit later.
 		 */
 
-		this.subcategoryComparisonCallback = function (a: RexPostTypeCategory, b: RexPostTypeCategory) {
-			//Special case: Put "Posts" at the top.
-			if (a.postType === 'post') {
-				return -1;
-			} else if (b.postType === 'post') {
-				return 1;
+		this.subcategoryComparisonCallback = function (a, b) {
+			if ((a instanceof RexPostTypeCategory) && (b instanceof RexPostTypeCategory)) {
+				//Special case: Put "Posts" at the top.
+				if (a.postType === 'post') {
+					return -1;
+				} else if (b.postType === 'post') {
+					return 1;
+				}
+
+				//Put other built-in post types above custom post types.
+				if (a.isDefault && !b.isDefault) {
+					return -1;
+				} else if (b.isDefault && !a.isDefault) {
+					return 1;
+				}
+
+				let labelA = a.name.toLowerCase(), labelB = b.name.toLowerCase();
+				return labelA.localeCompare(labelB);
 			}
 
-			//Put other built-in post types above custom post types.
-			if (a.isDefault && !b.isDefault) {
-				return -1;
-			} else if (b.isDefault && !a.isDefault) {
-				return 1;
-			}
-
-			let labelA = a.name.toLowerCase(), labelB = b.name.toLowerCase();
-			return labelA.localeCompare(labelB);
+			return RexCategory.defaultSubcategoryComparison(a, b);
 		};
 
 		this.tableColumns = ko.pureComputed({
@@ -1434,7 +1487,7 @@ class RexCapability {
 	readonly isPersonalOverride: KnockoutComputed<boolean>;
 	readonly isExplicitlyDenied: KnockoutComputed<boolean>;
 
-	originComponent: RexWordPressComponent = null;
+	originComponent: RexWordPressComponent | null = null;
 	usedByComponents: RexWordPressComponent[] = [];
 
 	menuItems: string[] = [];
@@ -1443,8 +1496,8 @@ class RexCapability {
 	predefinedPermissions: string[] = [];
 
 	grantedPermissions: KnockoutComputed<string[]>;
-	protected documentationUrl: string = null;
-	notes: string = null;
+	protected documentationUrl: string | null = null;
+	notes: string | null = null;
 
 	readonly isDeleted: KnockoutObservable<boolean>;
 
@@ -1466,7 +1519,7 @@ class RexCapability {
 
 		this.responsibleActors = ko.computed({
 			read: function () {
-				let actor = editor.selectedActor(), list = [];
+				let actor = editor.selectedActor(), list: RexBaseActor[] = [];
 				if (actor instanceof RexUser) {
 					actor.hasCap(self.name, list);
 				}
@@ -1579,7 +1632,7 @@ class RexCapability {
 		this.grantedPermissions = ko.computed({
 			read: () => {
 				const _ = wsAmeLodash;
-				let results = [];
+				let results: string[] = [];
 
 				if (this.predefinedPermissions.length > 0) {
 					results = this.predefinedPermissions.slice();
@@ -1595,6 +1648,10 @@ class RexCapability {
 					descriptions: AmeDictionary<string>
 				): string[] {
 					return _.map(actionGroups, (ids, action) => {
+						if (typeof action === 'undefined') {
+							throw new Error('Undefined action. This should never happen.');
+						}
+
 						let labels = _.map(ids, (id) => labelMap[id].pluralLabel)
 							.sort(localeAwareCompare);
 						let template = descriptions[action];
@@ -1609,6 +1666,10 @@ class RexCapability {
 				let postActionGroups = _.transform(
 					this.usedByPostTypeActions,
 					function (accumulator: { [action: string]: string[] }, actions, postType) {
+						if (typeof postType === 'undefined') {
+							return;
+						}
+
 						let actionKeys = _.keys(actions);
 
 						//Combine "edit" and "create" permissions because they usually use the same capability.
@@ -1638,6 +1699,10 @@ class RexCapability {
 				let taxonomyActionGroups = _.transform(
 					this.usedByTaxonomyActions,
 					function (accumulator: { [action: string]: string[] }, actions, taxonomy) {
+						if (typeof taxonomy === 'undefined') {
+							return;
+						}
+
 						let actionKeys = _.keys(actions);
 
 						//Most taxonomies use the same capability for manage_terms, edit_terms, and delete_terms.
@@ -1830,12 +1895,12 @@ class RexUserPreferences {
 		}
 	}
 
-	getObservable<T>(name: string, defaultValue: T = null): KnockoutObservable<T> {
+	getObservable<T>(name: string, defaultValue: T): KnockoutObservable<T> {
 		if (this.preferenceObservables.hasOwnProperty(name)) {
 			return this.preferenceObservables[name];
 		}
 
-		const newPreference = ko.observable(defaultValue || null);
+		const newPreference = ko.observable(defaultValue);
 		this.preferenceObservables[name] = newPreference;
 		this.preferenceCount(this.preferenceCount() + 1);
 
@@ -1909,12 +1974,27 @@ interface RexCategoryData {
 	slug?: string;
 
 	capabilities?: string[];
-	permissions?: { [action: string]: string };
-	subcategories?: RexCategoryData[];
-
-	variant?: string;
-	contentTypeId?: string; //Post type or taxonomy name (internal ID, not display name).
+	subcategories?: RexAnyCategoryData[];
 }
+
+interface RexBasicCategoryData extends RexCategoryData {
+	variant?: null;
+}
+
+interface RexExtendedCategoryData extends RexCategoryData {
+	permissions: { [action: string]: string };
+	contentTypeId: string;
+}
+
+interface RexPostTypeCategoryData extends RexExtendedCategoryData {
+	variant: 'post_type';
+}
+
+interface RexTaxonomyCategoryData extends RexExtendedCategoryData {
+	variant: 'taxonomy';
+}
+
+type RexAnyCategoryData = RexBasicCategoryData | RexPostTypeCategoryData | RexTaxonomyCategoryData;
 
 interface RexBaseContentData {
 	name: string;
@@ -1952,8 +2032,8 @@ interface RexAppData {
 	defaultRoleName: string;
 	trashedRoles: RexRoleData[];
 
-	coreCategory: RexCategoryData;
-	customCategories: RexCategoryData[];
+	coreCategory: RexAnyCategoryData;
+	customCategories: RexAnyCategoryData[];
 	uncategorizedCapabilities: string[];
 	userDefinedCapabilities: CapabilityMap;
 
@@ -1978,8 +2058,8 @@ interface RexCategoryViewOption {
 class RexBaseDialog implements AmeKnockoutDialog {
 	isOpen: KnockoutObservable<boolean> = ko.observable(false);
 	isRendered: KnockoutObservable<boolean> = ko.observable(false);
-	jQueryWidget: JQuery;
-	title: KnockoutObservable<string> = null;
+	jQueryWidget: JQuery | null = null;
+	title: KnockoutObservable<string | null> = ko.observable(null);
 	options: AmeDictionary<any> = {
 		buttons: []
 	};
@@ -1993,6 +2073,10 @@ class RexBaseDialog implements AmeKnockoutDialog {
 	}
 
 	setupValidationTooltip(inputSelector: string, message: KnockoutObservable<string>) {
+		if (this.jQueryWidget === null) {
+			return;
+		}
+
 		//Display validation messages next to the input field.
 		const element = this.jQueryWidget.find(inputSelector).qtip({
 			overwrite: false,
@@ -2048,7 +2132,7 @@ interface RexDeletableCapItem {
 
 class RexDeleteCapDialog extends RexBaseDialog {
 	options = {
-		buttons: [],
+		buttons: [] as any[],
 		minWidth: 380
 	};
 
@@ -2100,7 +2184,7 @@ class RexDeleteCapDialog extends RexBaseDialog {
 			read: () => {
 				const wpCore = editor.getComponent(':wordpress:');
 				return _.chain(editor.capabilities)
-					.filter(function (capability) {
+					.filter(function (capability: RexCapability) {
 						if (capability.originComponent === wpCore) {
 							return false;
 						}
@@ -2146,6 +2230,10 @@ class RexDeleteCapDialog extends RexBaseDialog {
 		});
 
 		deleteButtonText.subscribe((newText) => {
+			if (this.jQueryWidget === null) {
+				return;
+			}
+
 			this.jQueryWidget
 				.closest('.ui-dialog')
 				.find('.ui-dialog-buttonset .button-primary .ui-button-text')
@@ -2276,7 +2364,7 @@ class RexAddCapabilityDialog extends RexBaseDialog {
 		}];
 	}
 
-	onOpen(event, ui) {
+	onOpen(event: JQueryEventObject, ui: unknown) {
 		//Clear the input when the dialog is opened.
 		this.capabilityName('');
 	}
@@ -2300,7 +2388,7 @@ class RexAddCapabilityDialog extends RexBaseDialog {
 class RexAddRoleDialog extends RexBaseDialog {
 	roleName: KnockoutObservable<string> = ko.observable('');
 	roleDisplayName: KnockoutObservable<string> = ko.observable('');
-	roleToCopyFrom: KnockoutObservable<RexRole> = ko.observable(null);
+	roleToCopyFrom: KnockoutObservable<RexRole | null> = ko.observable(null);
 
 	isAddButtonEnabled: KnockoutComputed<boolean>;
 
@@ -2390,7 +2478,7 @@ class RexAddRoleDialog extends RexBaseDialog {
 		});
 
 		//Automatically generate a role name from the display name. Basically, turn it into a slug.
-		let lastAutoRoleName = null;
+		let lastAutoRoleName: string | null = null;
 		this.roleDisplayName.subscribe((displayName) => {
 			let slug = _.snakeCase(displayName);
 
@@ -2430,7 +2518,7 @@ class RexAddRoleDialog extends RexBaseDialog {
 		return true;
 	}
 
-	onOpen(event, ui) {
+	onOpen(event: JQueryEventObject, ui: any) {
 		//Clear dialog fields when it's opened.
 		this.roleName('');
 		this.roleDisplayName('');
@@ -2451,8 +2539,9 @@ class RexAddRoleDialog extends RexBaseDialog {
 		this.isOpen(false);
 
 		let caps = {};
-		if (this.roleToCopyFrom()) {
-			caps = this.roleToCopyFrom().getOwnCapabilities();
+		const sourceRole = this.roleToCopyFrom();
+		if (sourceRole) {
+			caps = sourceRole.getOwnCapabilities();
 		}
 
 		this.editor.addRole(this.roleName(), this.roleDisplayName(), caps);
@@ -2504,7 +2593,7 @@ class RexDeleteRoleDialog extends RexBaseDialog {
 		this.isOpen(false);
 	}
 
-	onOpen(event, ui) {
+	onOpen(event: JQueryEventObject, ui: any) {
 		//Deselect all previously selected roles.
 		wsAmeLodash.forEach(this.isRoleSelected, function (isSelected) {
 			isSelected(false);
@@ -2520,7 +2609,7 @@ class RexDeleteRoleDialog extends RexBaseDialog {
 
 	private getSelectedRoles(): RexRole[] {
 		const _ = wsAmeLodash;
-		let rolesToDelete = [];
+		let rolesToDelete: RexRole[] = [];
 		_.forEach(this.editor.roles(), (role) => {
 			if (this.getSelectionState(role.name())()) {
 				rolesToDelete.push(role);
@@ -2533,7 +2622,7 @@ class RexDeleteRoleDialog extends RexBaseDialog {
 class RexRenameRoleDialog extends RexBaseDialog {
 	private editor: RexRoleEditor;
 	isConfirmButtonEnabled: KnockoutComputed<boolean>;
-	selectedRole: KnockoutObservable<RexRole> = ko.observable(null);
+	selectedRole: KnockoutObservable<RexRole | null> = ko.observable(null);
 
 	newDisplayName: KnockoutObservable<string> = ko.observable('');
 	displayNameValidationMessage: KnockoutObservable<string> = ko.observable('');
@@ -2565,7 +2654,7 @@ class RexRenameRoleDialog extends RexBaseDialog {
 		});
 	}
 
-	onOpen(event, ui) {
+	onOpen(event: JQueryEventObject, ui: any) {
 		const _ = wsAmeLodash;
 
 		if (!this.isTooltipInitialised) {
@@ -2586,9 +2675,10 @@ class RexRenameRoleDialog extends RexBaseDialog {
 		if (!this.isConfirmButtonEnabled()) {
 			return;
 		}
-		if (this.selectedRole()) {
+		const selectedRole = this.selectedRole();
+		if (selectedRole) {
 			const name = this.newDisplayName().trim();
-			this.selectedRole().displayName(name);
+			selectedRole.displayName(name);
 			this.editor.actorSelector.repopulate();
 		}
 		this.isOpen(false);
@@ -2634,11 +2724,11 @@ class RexEagerObservableStringSet {
 		return this.items[item];
 	}
 
-	public getAsObject<T>(fillValue: T | boolean = true): Record<string, T> {
+	public getAsObject<T>(fillValue: T): Record<string, T> {
 		const _ = wsAmeLodash;
-		let output = {};
+		let output: Record<string, T> = {};
 		_.forEach(this.items, (isInSet, item) => {
-			if (isInSet()) {
+			if (isInSet() && (typeof item !== 'undefined')) {
 				output[item] = fillValue;
 			}
 		});
@@ -2651,12 +2741,12 @@ class RexObservableEditableRoleSettings {
 	userDefinedList: RexEagerObservableStringSet;
 
 	constructor() {
-		this.strategy = ko.observable('auto');
+		this.strategy = ko.observable<RexEditableRoleStrategy>('auto');
 		this.userDefinedList = new RexEagerObservableStringSet();
 	}
 
 	toPlainObject(): RexEditableRoleSettings {
-		let roleList = this.userDefinedList.getAsObject<true>(true);
+		let roleList: Record<string, true> | null = this.userDefinedList.getAsObject<true>(true);
 		if (wsAmeLodash.isEmpty(roleList)) {
 			roleList = null;
 		}
@@ -2802,7 +2892,7 @@ class RexUserRoleModule {
 class RexEditableRolesDialog extends RexBaseDialog {
 	private editor: RexRoleEditor;
 	private readonly visibleActors: KnockoutObservableArray<IAmeActor>;
-	selectedActor: KnockoutObservable<RexBaseActor> = ko.observable(null);
+	selectedActor: KnockoutObservable<RexBaseActor | null> = ko.observable(null);
 
 	private actorSettings: { [actorId: string]: RexObservableEditableRoleSettings; } = {};
 	private selectedActorSettings: KnockoutObservable<RexObservableEditableRoleSettings>;
@@ -2814,7 +2904,7 @@ class RexEditableRolesDialog extends RexBaseDialog {
 	constructor(editor: RexRoleEditor) {
 		super();
 		this.editor = editor;
-		this.visibleActors = ko.observableArray([]);
+		this.visibleActors = ko.observableArray([] as IAmeActor[]);
 
 		this.options.minWidth = 600;
 		this.options.buttons.push({
@@ -2832,15 +2922,16 @@ class RexEditableRolesDialog extends RexBaseDialog {
 
 		const dummySettings = new RexObservableEditableRoleSettings();
 		this.selectedActorSettings = ko.computed(() => {
-			if (this.selectedActor() === null) {
+			const selectedActor = this.selectedActor();
+			if (selectedActor === null) {
 				return dummySettings;
 			}
-			if (this.selectedActor() === superAdmin) {
+			if (selectedActor === superAdmin) {
 				return superAdminSettings;
 			}
-			const actorId = this.selectedActor().getId();
+			const actorId = selectedActor.getId();
 			if (!this.actorSettings.hasOwnProperty(actorId)) {
-				//This should never happen; the dictionary should be initialised when opening the dialog.
+				//This should never happen; the dictionary should be initialized when opening the dialog.
 				this.actorSettings[actorId] = new RexObservableEditableRoleSettings();
 			}
 			return this.actorSettings[actorId];
@@ -2868,11 +2959,14 @@ class RexEditableRolesDialog extends RexBaseDialog {
 		this.isListStrategyAllowed = this.isAutoStrategyAllowed;
 	}
 
-	onOpen(event, ui) {
+	onOpen(event: JQueryEventObject, ui: any) {
 		const _ = wsAmeLodash;
 
 		//Copy editable role settings into observables.
-		_.forEach(this.editor.actorEditableRoles, (settings: RexEditableRoleSettings, actorId: string) => {
+		_.forEach(this.editor.actorEditableRoles, (settings: RexEditableRoleSettings, actorId) => {
+			if (typeof actorId !== 'string') {
+				return;
+			}
 			if (!this.actorSettings.hasOwnProperty(actorId)) {
 				this.actorSettings[actorId] = new RexObservableEditableRoleSettings();
 			}
@@ -2880,7 +2974,10 @@ class RexEditableRolesDialog extends RexBaseDialog {
 			observableSettings.strategy(settings.strategy);
 			observableSettings.userDefinedList.clear();
 			if (settings.userDefinedList !== null) {
-				_.forEach(settings.userDefinedList, (ignored, roleId: string) => {
+				_.forEach(settings.userDefinedList, (ignored, roleId) => {
+					if (typeof roleId !== 'string') {
+						return;
+					}
 					observableSettings.userDefinedList.add(roleId);
 				});
 			}
@@ -2902,8 +2999,12 @@ class RexEditableRolesDialog extends RexBaseDialog {
 		const _ = wsAmeLodash;
 		let settings = this.editor.actorEditableRoles;
 		_.forEach(this.actorSettings, (observableSettings, actorId) => {
+			if (typeof actorId === 'undefined') {
+				throw new Error('Actor ID is undefined. This should never happen.');
+			}
+
 			if (observableSettings.strategy() === 'auto') {
-				//"auto" is the default so we don't need to store anything.
+				//"auto" is the default, so we don't need to store anything.
 				delete settings[actorId];
 			} else {
 				settings[actorId] = observableSettings.toPlainObject();
@@ -2968,7 +3069,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 	readonly coreComponent: RexWordPressComponent;
 
 	rootCategory: RexCategory;
-	selectedCategory: KnockoutComputed<RexCategory>;
+	selectedCategory: KnockoutComputed<RexCategory | null>;
 	categoriesBySlug: AmeDictionary<RexCategory> = {};
 	categoryViewMode: KnockoutObservable<RexCategoryViewOption>;
 	capabilityViewClasses: KnockoutObservable<string>;
@@ -2987,7 +3088,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 	actorSelector: AmeActorSelector;
 	private actorLookup: AmeDictionary<RexBaseActor> = {};
 	private readonly dummyActor: RexRole;
-	permissionTipSubject: KnockoutObservable<RexPermission>;
+	permissionTipSubject: KnockoutObservable<RexPermission | null>;
 
 	searchQuery: KnockoutObservable<string>;
 	searchKeywords: KnockoutComputed<string[]>;
@@ -3116,13 +3217,16 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		});
 
 		this.components = _.mapValues(data.knownComponents, (details, id) => {
+			if (typeof id === 'undefined') {
+				throw new Error('Undefined component ID. This should never happen.');
+			}
 			return RexWordPressComponent.fromJs(id, details);
 		});
 		this.coreComponent = new RexWordPressComponent(':wordpress:', 'WordPress core');
 		this.components[':wordpress:'] = this.coreComponent;
 
 		//Populate roles and users.
-		const tempRoleList = [];
+		const tempRoleList: RexRole[] = [];
 		_.forEach(data.roles, (roleData) => {
 			const role = new RexRole(roleData.name, roleData.displayName, roleData.capabilities);
 			role.hasUsers = roleData.hasUsers;
@@ -3131,7 +3235,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		});
 		this.roles = ko.observableArray(tempRoleList);
 
-		const tempUserList = [];
+		const tempUserList: RexUser[] = [];
 		_.forEach(AmeActors.getUsers(), (data) => {
 			const user = RexUser.fromAmeUser(data, self);
 			tempUserList.push(user);
@@ -3147,7 +3251,11 @@ class RexRoleEditor implements AmeActorManagerInterface {
 
 		this.actorSelector = new AmeActorSelector(this, true, false);
 		//Wrap the selected actor in a computed observable so that it can be used with Knockout.
-		let _selectedActor = ko.observable(this.getActor(this.actorSelector.selectedActor));
+		let _selectedActor = ko.observable(
+			(this.actorSelector.selectedActor === null)
+				? this.dummyActor
+				: this.getActor(this.actorSelector.selectedActor)
+		);
 		this.selectedActor = ko.computed({
 			read: function () {
 				return _selectedActor();
@@ -3156,7 +3264,11 @@ class RexRoleEditor implements AmeActorManagerInterface {
 				this.actorSelector.setSelectedActor(newActor.id());
 			}
 		});
-		this.actorSelector.onChange((newSelectedActor: string) => {
+		this.actorSelector.onChange((newSelectedActor: string | null) => {
+			if (newSelectedActor === null) {
+				_selectedActor(this.dummyActor); //This should never happen in practice.
+				return;
+			}
 			_selectedActor(this.getActor(newSelectedActor));
 		});
 
@@ -3166,7 +3278,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		});
 
 		//Re-select the previously selected actor if possible.
-		let initialActor: RexBaseActor = null;
+		let initialActor: RexBaseActor | null = null;
 		if (data.selectedActor) {
 			initialActor = this.getActor(data.selectedActor);
 		}
@@ -3180,7 +3292,10 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		this.metaCapabilityMap = data.metaCapMap;
 		this.userDefinedCapabilities = data.userDefinedCapabilities;
 
-		this.capabilities = _.mapValues(data.capabilities, (metadata: RexCapabilityData, name: string) => {
+		this.capabilities = _.mapValues(data.capabilities, (metadata: RexCapabilityData, name) => {
+			if (typeof name === 'undefined') {
+				throw new Error('Undefined capability name. This should never happen.');
+			}
 			return RexCapability.fromJs(name, metadata, self);
 		});
 
@@ -3207,6 +3322,10 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		const postTypeCategory = new RexPostTypeContainerCategory('Post Types', this, 'postTypes');
 		this.postTypes = _.indexBy(data.postTypes, 'name');
 		_.forEach(this.postTypes, (details: RexPostTypeData, id) => {
+			if (typeof id === 'undefined') {
+				throw new Error('Undefined post type ID. This should never happen.');
+			}
+
 			const category = new RexPostTypeCategory(details.label, self, id, 'postTypes/' + id, details.permissions, details.isDefault);
 			if (details.componentId) {
 				category.origin = this.getComponent(details.componentId);
@@ -3227,6 +3346,10 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		this.taxonomies = data.taxonomies;
 		const taxonomyCategory = new RexTaxonomyContainerCategory('Taxonomies', this, 'taxonomies');
 		_.forEach(data.taxonomies, (details, id) => {
+			if (typeof id === 'undefined') {
+				throw new Error('Undefined taxonomy ID. This should never happen.');
+			}
+
 			const category = new RexTaxonomyCategory(details.label, self, id, 'taxonomies/' + id, details.permissions);
 			taxonomyCategory.addSubcategory(category);
 
@@ -3244,7 +3367,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 
 		const customParentCategory = new RexCategory('Plugins', this, 'custom');
 
-		function initCustomCategory(details: RexCategoryData, parent: RexCategory) {
+		function initCustomCategory(details: RexAnyCategoryData, parent: RexCategory) {
 			let category = RexCategory.fromJs(details, self);
 
 			//Sort subcategories by title.
@@ -3280,7 +3403,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		);
 		customParentCategory.addSubcategory(uncategorizedCategory);
 
-		let _selectedCategory: KnockoutObservable<RexCategory> = ko.observable(null);
+		let _selectedCategory: KnockoutObservable<RexCategory | null> = ko.observable(null);
 		this.selectedCategory = ko.computed({
 			read: function () {
 				return _selectedCategory();
@@ -3309,8 +3432,8 @@ class RexRoleEditor implements AmeActorManagerInterface {
 				//Create a permission for each unique, non-deleted capability.
 				//Exclude special caps like do_not_allow and exist because they can't be enabled.
 				const excludedCaps = ['do_not_allow', 'exist'];
-				return _.chain(this.capabilities)
-					.map(function (capability) {
+				const result = _.chain(this.capabilities)
+					.map(function (capability: RexCapability) {
 						if (excludedCaps.indexOf(capability.name) >= 0) {
 							return null;
 						}
@@ -3320,6 +3443,9 @@ class RexRoleEditor implements AmeActorManagerInterface {
 						return value !== null
 					})
 					.value();
+
+				//TypeScript doesn't know that the filter above eliminates nulls.
+				return result as RexPermission[];
 			},
 			deferEvaluation: true
 		});
@@ -3486,7 +3612,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		return this.dummyActor;
 	}
 
-	getRole(name: string): RexRole {
+	getRole(name: string): RexRole | null {
 		const actorId = 'role:' + name;
 		if (this.actorLookup.hasOwnProperty(actorId)) {
 			const role = this.actorLookup[actorId];
@@ -3566,7 +3692,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		return RexSuperAdmin.getInstance();
 	}
 
-	getUser(login: string): RexUser {
+	getUser(login: string): RexUser | null {
 		const actorId = 'user:' + login;
 		if (this.actorLookup.hasOwnProperty(actorId)) {
 			const user = this.actorLookup[actorId];
@@ -3586,7 +3712,7 @@ class RexRoleEditor implements AmeActorManagerInterface {
 		return caps.hasOwnProperty(capabilityName);
 	}
 
-	addCapability(capabilityName: string): RexCategory {
+	addCapability(capabilityName: string): RexCategory | null {
 		let capability: RexCapability;
 		if (this.capabilities.hasOwnProperty(capabilityName)) {
 			capability = this.capabilities[capabilityName];
@@ -3702,10 +3828,14 @@ class RexRoleEditor implements AmeActorManagerInterface {
 	}
 }
 
-declare var wsRexRoleEditorData: RexAppData;
+declare var wsRexRoleEditorData: RexAppData | null;
 
 (function () {
-	jQuery(function ($) {
+	jQuery(function ($: JQueryStatic) {
+		if (wsRexRoleEditorData === null) {
+			throw 'wsRexRoleEditorData is null. This should never happen.';
+		}
+
 		const rootElement = jQuery('#ame-role-editor-root');
 
 		//Initialize the application.
@@ -3713,7 +3843,7 @@ declare var wsRexRoleEditorData: RexAppData;
 		//The input data can be quite large, so let's give the browser a chance to free up that memory.
 		wsRexRoleEditorData = null;
 
-		window['ameRoleEditor'] = app;
+		(window as any)['ameRoleEditor'] = app;
 
 		//console.time('Apply Knockout bindings');
 		//ko.options.deferUpdates = true;
@@ -3724,7 +3854,7 @@ declare var wsRexRoleEditorData: RexAppData;
 		//Track the state of the Shift key.
 		let isShiftKeyDown = false;
 
-		function handleKeyboardEvent(event) {
+		function handleKeyboardEvent(event: JQueryEventObject) {
 			const newState = !!(event.shiftKey);
 			if (newState !== isShiftKeyDown) {
 				isShiftKeyDown = newState;
@@ -3738,9 +3868,12 @@ declare var wsRexRoleEditorData: RexAppData;
 		);
 
 		//Initialize permission tooltips.
-		let visiblePermissionTooltips = [];
+		let visiblePermissionTooltips: any[] = [];
 
-		rootElement.find('#rex-capability-view').on('mouseenter click', '.rex-permission-tip-trigger', function (event) {
+		rootElement.find('#rex-capability-view').on('mouseenter click', '.rex-permission-tip-trigger', function (
+			this: HTMLElement,
+			event
+		) {
 			$(this).qtip({
 				overwrite: false,
 				content: {
@@ -3778,7 +3911,7 @@ declare var wsRexRoleEditorData: RexAppData;
 				},
 
 				events: {
-					show: function (event, api) {
+					show: function (event: JQueryEventObject, api: any) {
 						//Immediately hide all other permission tooltips.
 						for (let i = visiblePermissionTooltips.length - 1; i >= 0; i--) {
 							visiblePermissionTooltips[i].hide();
@@ -3797,7 +3930,7 @@ declare var wsRexRoleEditorData: RexAppData;
 
 						visiblePermissionTooltips.push(api);
 					},
-					hide: function (event, api) {
+					hide: function (event: JQueryEventObject, api: any) {
 						const index = visiblePermissionTooltips.indexOf(api);
 						if (index >= 0) {
 							visiblePermissionTooltips.splice(index, 1);
@@ -3811,14 +3944,14 @@ declare var wsRexRoleEditorData: RexAppData;
 		jQuery.fn.qtip.zindex = 100101 + 5000;
 
 		//Set up dropdown menus.
-		$('.rex-dropdown-trigger').on('click', function (event) {
+		$('.rex-dropdown-trigger').on('click', function (this: HTMLElement, event) {
 			const $trigger = $(this);
 			const $dropdown = $('#' + $trigger.data('target-dropdown-id'));
 
 			event.stopPropagation();
 			event.preventDefault();
 
-			function hideThisDropdown(event) {
+			function hideThisDropdown(event: JQueryEventObject) {
 				//Only do it if the user clicked something outside the dropdown.
 				const $clickedDropdown = $(event.target).closest($dropdown.get(0));
 				if ($clickedDropdown.length < 1) {

@@ -2,10 +2,11 @@
 
 jQuery(function($) {
 	//Load the Dashboard in a hidden frame.
-	var frame = $('<iframe></iframe>');
+	const frame = $('<iframe></iframe>');
 
 	frame.on('load', function() {
 		//When done, redirect back to the widget editor.
+		//phpcs:ignore WordPressVIPMinimum.JS.Window.location -- This writes the location, not reads it.
 		window.location.href = wsWidgetRefresherData['editorUrl'];
 	});
 

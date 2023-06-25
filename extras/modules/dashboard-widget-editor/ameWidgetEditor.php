@@ -1,4 +1,8 @@
 <?php
+
+use YahnisElsts\AdminMenuEditor\DynamicStylesheets\Stylesheet;
+use YahnisElsts\WpDependencyWrapper\ScriptDependency;
+
 require_once AME_ROOT_DIR . '/extras/exportable-module.php';
 
 class ameWidgetEditor extends ameModule implements ameExportableModule {
@@ -8,6 +12,8 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 
 	const HIDEABLE_ITEM_PREFIX = 'dw/';
 	const HIDEABLE_WELCOME_ITEM_ID = 'dw/special:welcome';
+
+	const PREVIEW_COLUMN_META_KEY = 'ws_ame_dashboard_preview_cols';
 
 	protected $tabSlug = 'dashboard-widgets';
 	protected $tabTitle = 'Dashboard Widgets';
@@ -19,6 +25,11 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 
 	private $shouldRefreshWidgets = false;
 
+	/**
+	 * @var null|\YahnisElsts\AdminMenuEditor\DynamicStylesheets\Stylesheet
+	 */
+	private $columnStylesheet = null;
+
 	public function __construct($menuEditor) {
 		parent::__construct($menuEditor);
 
@@ -27,33 +38,76 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			return;
 		}
 
-		add_action('wp_dashboard_setup', array($this, 'setupDashboard'), 20000);
+		add_action('wp_dashboard_setup', [$this, 'setupDashboard'], 20000);
 
-		add_action('admin_menu_editor-header', array($this, 'handleFormSubmission'), 10, 2);
+		add_action('admin_menu_editor-header', [$this, 'handleFormSubmission'], 10, 2);
 
 		ajaw_v1_CreateAction('ws-ame-export-widgets')
 			->requiredParam('widgetData')
-			->permissionCallback(array($this, 'userCanEditWidgets'))
-			->handler(array($this, 'ajaxExportWidgets'))
+			->permissionCallback([$this, 'userCanEditWidgets'])
+			->handler([$this, 'ajaxExportWidgets'])
 			->register();
 
 		ajaw_v1_CreateAction('ws-ame-import-widgets')
-			->permissionCallback(array($this, 'userCanEditWidgets'))
-			->handler(array($this, 'ajaxImportWidgets'))
+			->permissionCallback([$this, 'userCanEditWidgets'])
+			->handler([$this, 'ajaxImportWidgets'])
 			->register();
 
 		add_action(
 			'admin_menu_editor-register_hideable_items',
-			array($this, 'registerHideableItems'),
-			10,
-			1
+			[$this, 'registerHideableItems']
 		);
 		add_filter(
 			'admin_menu_editor-save_hideable_items-d-widgets',
-			array($this, 'saveHideableItems'),
+			[$this, 'saveHideableItems'],
 			10,
 			2
 		);
+
+		$this->columnStylesheet = new Stylesheet(
+			'ame-dashboard-column-override',
+			function () {
+				$settings = $this->loadSettings();
+				$columns = $settings->getForcedColumnCount();
+				if ( $columns === null ) {
+					return ''; //No need to override the number of columns.
+				}
+
+				$templateFile = __DIR__ . '/custom-columns.css';
+				if ( !is_file($templateFile) ) {
+					return '/* CSS template not found. */';
+				}
+
+				//This is not a remote file.
+				//phpcs:ignore WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsUnknown
+				$css = file_get_contents($templateFile);
+				if ( empty($css) ) {
+					return '/* Failed to load the CSS template from a file. */';
+				}
+
+				$breakpoint = $settings->getForcedColumnBreakpoint();
+				if ( empty($breakpoint) ) {
+					return $css;
+				} else {
+					//Wrap the CSS in a media query that only applies it above
+					//the configured breakpoint (inclusive).
+					$breakpoint = min(max(intval($breakpoint), 0), 3000);
+					return (
+						'@media screen and (min-width: ' . $breakpoint . 'px) {' . PHP_EOL .
+						$css . PHP_EOL
+						. '}'
+					);
+				}
+			},
+			function () {
+				$settings = $this->loadSettings();
+				return $settings->getLastModified();
+			}
+		);
+
+		if ( defined('DOING_AJAX') ) {
+			$this->columnStylesheet->addOutputHook();
+		}
 	}
 
 	public function setupDashboard() {
@@ -65,9 +119,10 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		//Store new widgets and changed defaults.
 		//We want a complete list of widgets, so we only do this when an administrator is logged in.
 		//Admins usually can see everything. Other roles might be missing specific widgets.
+		//phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ($changesDetected || !empty($_GET['ame-cache-buster'])) && $this->userCanEditWidgets() ) {
 			//Remove wrapped widgets where the file no longer exists.
-			foreach($this->dashboardWidgets->getMissingWrappedWidgets() as $widget) {
+			foreach ($this->dashboardWidgets->getMissingWrappedWidgets() as $widget) {
 				$callbackFileName = $widget->getCallbackFileName();
 				if ( !empty($callbackFileName) && !is_file($callbackFileName) ) {
 					$this->dashboardWidgets->remove($widget->getId());
@@ -80,16 +135,19 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 
 		//Remove all Dashboard widgets.
 		//Important: Using remove_meta_box() would prevent widgets being re-added. Clearing the array does not.
-		$wp_meta_boxes['dashboard'] = array();
+		//phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Required for the plugin to work.
+		$wp_meta_boxes['dashboard'] = [];
 
 		//Re-add all widgets, this time with custom settings.
 		$currentUser = wp_get_current_user();
-		foreach($this->dashboardWidgets->getPresentWidgets() as $widget) {
+		foreach ($this->dashboardWidgets->getPresentWidgets() as $widget) {
 			if ( $widget->isVisibleTo($currentUser, $this->menuEditor) ) {
-				$widget->addToDashboard();
+				$widget->addToDashboard(
+					$this->dashboardWidgets->isDefaultOrderOverrideEnabled()
+				);
 			} else {
 				//Technically, this line is not required. It just ensures that other plugins can't recreate the widget.
-				remove_meta_box($widget->getId(), 'dashboard', $widget->getLocation());
+				remove_meta_box($widget->getId(), 'dashboard', $widget->getOriginalLocation());
 			}
 		}
 
@@ -103,28 +161,83 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		if ( $isWelcomePanelHidden ) {
 			remove_action('welcome_panel', 'wp_welcome_panel');
 		}
+
+		$orderOverrideEnabled = $this->dashboardWidgets->isOrderOverrideEnabledFor($currentUser);
+
+		if ( $orderOverrideEnabled ) {
+			//Optimization: Enable the user metadata filter only when order override is
+			//enabled for the current user and when the user is viewing the dashboard.
+			add_filter('get_user_metadata', [$this, 'filterUserWidgetOrder'], 10, 4);
+
+			//Remove the dashed outline from empty widget containers and hide the "up"
+			//and "down" buttons. The helper script will also handle some of this, but
+			//doing it early and in CSS helps prevent FOUC.
+			add_action(
+				'admin_enqueue_scripts',
+				function ($hookSuffix = null) {
+					if ( $hookSuffix !== 'index.php' ) {
+						return;
+					}
+					wp_add_inline_style(
+						'dashboard',
+						'#dashboard-widgets .postbox-container .empty-container { outline: none; }
+						 #dashboard-widgets .postbox-container .empty-container:after { content: ""; }
+						 #dashboard-widgets .postbox .handle-order-higher, 
+						 #dashboard-widgets .postbox .handle-order-lower { display: none; }'
+					);
+				}
+			);
+		}
+
+		if ( $orderOverrideEnabled ) {
+			//Enqueue the helper script that overrides the widget order and column count.
+			ScriptDependency::create(
+				plugins_url('custom-widget-layout.js', __FILE__),
+				'ame-dashboard-layout-override'
+			)
+				->addDependencies('jquery', 'jquery-ui-sortable')
+				->addJsVariable(
+					'wsAmeDashboardLayoutSettings',
+					[
+						'orderOverrideEnabled' => $orderOverrideEnabled,
+					]
+				)
+				->autoEnqueue();
+		}
+
+		$columns = $this->dashboardWidgets->getForcedColumnCount();
+		if ( !empty($columns) && $this->dashboardWidgets->isColumnOverrideEnabledFor($currentUser) ) {
+			//It appears that the `wp_dashboard_setup` hook only runs on the "index.php" page,
+			//so we don't need to worry about checking the hook suffix when adding the stylesheet.
+			$this->columnStylesheet->addAdminEnqueueHook();
+
+			add_filter('admin_body_class', function ($classes) use ($columns) {
+				$classes .= ' ame-de-override-columns-' . $columns . ' ';
+				return $classes;
+			});
+		}
 	}
 
 	public function enqueueTabScripts() {
-		//TODO: Remove this later, it's already registered in register_base_dependencies.
-		wp_register_auto_versioned_script(
-			'knockout',
-			plugins_url('js/knockout.js', $this->menuEditor->plugin_file)
-		);
-
 		wp_register_auto_versioned_script(
 			'ame-dashboard-widget',
 			plugins_url('dashboard-widget.js', __FILE__),
-			array('knockout', 'ame-lodash', 'ame-actor-manager',)
+			['ame-knockout', 'ame-lodash', 'ame-actor-manager', 'ame-pro-common-lib']
 		);
 
 		wp_register_auto_versioned_script(
 			'ame-dashboard-widget-editor',
 			plugins_url('dashboard-widget-editor.js', __FILE__),
-			array(
-				'ame-lodash', 'ame-dashboard-widget', 'knockout', 'ame-actor-selector',
-				'ame-jquery-form', 'jquery-ui-dialog', 'ame-ko-extensions',
-			)
+			[
+				'ame-lodash',
+				'ame-dashboard-widget',
+				'ame-knockout',
+				'ame-actor-selector',
+				'ame-jquery-form',
+				'jquery-ui-dialog',
+				'ame-ko-extensions',
+				'ame-knockout-sortable',
+			]
 		);
 
 		//Automatically refresh the list of available dashboard widgets.
@@ -142,20 +255,21 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			wp_enqueue_auto_versioned_script(
 				'ame-refresh-widgets',
 				plugins_url('refresh-widgets.js', __FILE__),
-				array('jquery')
+				['jquery']
 			);
 
 			wp_localize_script(
 				'ame-refresh-widgets',
 				'wsWidgetRefresherData',
-				array(
-					'editorUrl' => $this->getEditorUrl(array('ame-widget-refresh-done' => 1)),
-					'dashboardUrl' => add_query_arg('ame-cache-buster', time() . '_' . rand(), admin_url('index.php')),
-				)
+				[
+					'editorUrl'    => $this->getEditorUrl(['ame-widget-refresh-done' => 1]),
+					'dashboardUrl' => add_query_arg('ame-cache-buster', time() . '_' . wp_rand(), admin_url('index.php')),
+				]
 			);
 			return;
 		}
 
+		wp_enqueue_script('jquery-qtip');
 		wp_enqueue_script('ame-dashboard-widget-editor');
 
 		$selectedActor = null;
@@ -163,14 +277,22 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			$selectedActor = strval($query['selected_actor']);
 		}
 
+		$previewColumns = get_user_meta(get_current_user_id(), self::PREVIEW_COLUMN_META_KEY, true);
+		if ( is_numeric($previewColumns) ) {
+			$previewColumns = max(min(intval($previewColumns), 4), 1);
+		} else {
+			$previewColumns = 1;
+		}
+
 		wp_localize_script(
 			'ame-dashboard-widget-editor',
 			'wsWidgetEditorData',
-			array(
+			[
 				'widgetSettings' => $this->dashboardWidgets->toArray(),
-				'selectedActor' => $selectedActor,
-				'isMultisite' => is_multisite(),
-			)
+				'selectedActor'  => $selectedActor,
+				'isMultisite'    => is_multisite(),
+				'previewColumns' => $previewColumns,
+			]
 		);
 	}
 
@@ -189,7 +311,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		}
 	}
 
-	public function handleFormSubmission($action, $post = array()) {
+	public function handleFormSubmission($action, $post = []) {
 		//Note: We don't need to check user permissions here because plugin core already did.
 		if ( $action === 'save_widgets' ) {
 			check_admin_referer($action);
@@ -197,7 +319,13 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			$this->dashboardWidgets = ameWidgetCollection::fromJSON($post['data']);
 			$this->saveSettings();
 
-			$params = array('updated' => 1);
+			//Remember the preview column count.
+			if ( isset($post['preview_columns']) && is_scalar($post['preview_columns']) ) {
+				$columnCount = max(min(intval($post['preview_columns']), 4), 1);
+				update_user_meta(get_current_user_id(), self::PREVIEW_COLUMN_META_KEY, $columnCount);
+			}
+
+			$params = ['updated' => 1];
 
 			//Re-select the same actor.
 			if ( !empty($post['selected_actor']) ) {
@@ -209,12 +337,12 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		}
 	}
 
-	private function getEditorUrl($queryParameters = array()) {
+	private function getEditorUrl($queryParameters = []) {
 		$queryParameters = array_merge(
-			array(
-				'page' => 'menu_editor',
-			    'sub_section' => 'dashboard-widgets'
-			),
+			[
+				'page'        => 'menu_editor',
+				'sub_section' => 'dashboard-widgets',
+			],
 			$queryParameters
 		);
 		return add_query_arg($queryParameters, admin_url('options-general.php'));
@@ -231,8 +359,8 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 
 		$fileName = sprintf(
 			'%1$s dashboard widgets (%2$s).json',
-			parse_url(get_site_url(), PHP_URL_HOST),
-			date('Y-m-d')
+			wp_parse_url(get_site_url(), PHP_URL_HOST),
+			gmdate('Y-m-d')
 		);
 
 		//Force file download.
@@ -247,6 +375,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		header("Pragma: private");
 		header("Expires: Mon, 26 Jul 1997 05:00:00 GMT");
 
+		//phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- The data is JSON, and is output as a file.
 		echo $exportData;
 		exit();
 	}
@@ -256,24 +385,18 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			return new WP_Error('no_file', 'No file specified');
 		}
 
+		//While this doesn't use wp_handle_upload() since we don't want to keep the file,
+		//it does perform basic validation and error checking.
+		//phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$importFile = $_FILES['widgetFile'];
-		if ( filesize($importFile['tmp_name']) > self::MAX_IMPORT_FILE_SIZE ){
-			return new WP_Error(
-				'file_too_large',
-				sprintf(
-					'Import file too large. Maximum allowed size: %s bytes',
-					number_format_i18n(self::MAX_IMPORT_FILE_SIZE)
-				)
-			);
-		}
 
 		//Check for general upload errors.
 		if ( $importFile['error'] !== UPLOAD_ERR_OK ) {
 
-			$knownErrorCodes = array(
+			$knownErrorCodes = [
 				UPLOAD_ERR_INI_SIZE   => sprintf(
 					'The uploaded file exceeds the upload_max_filesize directive in php.ini. Limit: %s',
-					strval(ini_get('upload_max_filesize'))
+					ini_get('upload_max_filesize')
 				),
 				UPLOAD_ERR_FORM_SIZE  => "The uploaded file exceeds the internal file size limit. Please contact the developer.",
 				UPLOAD_ERR_PARTIAL    => "The file was only partially uploaded",
@@ -281,7 +404,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 				UPLOAD_ERR_NO_TMP_DIR => "Missing a temporary folder",
 				UPLOAD_ERR_CANT_WRITE => "Failed to write file to disk",
 				UPLOAD_ERR_EXTENSION  => "File upload stopped by a PHP extension",
-			);
+			];
 
 			if ( array_key_exists($importFile['error'], $knownErrorCodes) ) {
 				$message = $knownErrorCodes[$importFile['error']];
@@ -290,6 +413,20 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			}
 
 			return new WP_Error('internal_upload_error', $message);
+		}
+
+		if ( !is_uploaded_file($importFile['tmp_name']) ) {
+			return new WP_Error('invalid_upload', 'Invalid upload: not an uploaded file');
+		}
+
+		if ( filesize($importFile['tmp_name']) > self::MAX_IMPORT_FILE_SIZE ) {
+			return new WP_Error(
+				'file_too_large',
+				sprintf(
+					'Import file too large. Maximum allowed size: %s bytes',
+					number_format_i18n(self::MAX_IMPORT_FILE_SIZE)
+				)
+			);
 		}
 
 		$fileContents = file_get_contents($importFile['tmp_name']);
@@ -321,7 +458,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			return $this->dashboardWidgets;
 		}
 
-		$settings = $this->getScopedOption(self::OPTION_NAME, null);
+		$settings = $this->getScopedOption(self::OPTION_NAME);
 		if ( empty($settings) ) {
 			$this->dashboardWidgets = new ameWidgetCollection();
 		} else {
@@ -383,7 +520,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 	 * @return string
 	 */
 	private function generateCompontentHash() {
-		$components = array();
+		$components = [];
 
 		//WordPress.
 		$components[] = 'WordPress ' . (isset($GLOBALS['wp_version']) ? $GLOBALS['wp_version'] : 'unknown');
@@ -403,7 +540,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		sort($activePlugins);
 		$components = array_merge($components, $activePlugins);
 
-		return md5(implode('|' , $components));
+		return md5(implode('|', $components));
 	}
 
 	/**
@@ -429,7 +566,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			$store->addItem(
 				self::HIDEABLE_ITEM_PREFIX . $widget->getId(),
 				$this->sanitizeTitleForHiding($widget->getTitle()),
-				array($cat),
+				[$cat],
 				null,
 				$widget->getGrantAccess(),
 				'd-widgets',
@@ -441,7 +578,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		$store->addItem(
 			self::HIDEABLE_WELCOME_ITEM_ID,
 			'Welcome',
-			array($cat),
+			[$cat],
 			null,
 			$collection->getWelcomePanelVisibility(),
 			'd-widgets'
@@ -459,7 +596,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 			$title
 		);*/
 
-		return trim(strip_tags($title));
+		return trim(wp_strip_all_tags($title));
 	}
 
 	public function saveHideableItems($errors, $items) {
@@ -470,8 +607,8 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		if ( isset($items[self::HIDEABLE_WELCOME_ITEM_ID]) ) {
 			$welcomePanelEnabled = ameUtils::get(
 				$items,
-				array(self::HIDEABLE_WELCOME_ITEM_ID, 'enabled'),
-				array()
+				[self::HIDEABLE_WELCOME_ITEM_ID, 'enabled'],
+				[]
 			);
 			unset($items[self::HIDEABLE_WELCOME_ITEM_ID]);
 
@@ -486,7 +623,7 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 
 		foreach ($items as $id => $item) {
 			$widgetId = substr($id, strlen(self::HIDEABLE_ITEM_PREFIX));
-			$enabled = !empty($item['enabled']) ? $item['enabled'] : array();
+			$enabled = !empty($item['enabled']) ? $item['enabled'] : [];
 
 			$widget = $collection->getWidgetById($widgetId);
 			if ( $widget !== null ) {
@@ -500,5 +637,41 @@ class ameWidgetEditor extends ameModule implements ameExportableModule {
 		}
 
 		return $errors;
+	}
+
+	public function filterUserWidgetOrder($inputValue, $objectId = null, $metaKey = '') {
+		if (
+			($metaKey !== 'meta-box-order_dashboard')
+			|| ($objectId !== get_current_user_id())
+		) {
+			return $inputValue;
+		}
+		if ( empty($this->dashboardWidgets) ) {
+			return $inputValue;
+		}
+		$presentWidgets = $this->dashboardWidgets->getPresentWidgets();
+		if ( empty($presentWidgets) ) {
+			return $inputValue;
+		}
+
+		$columns = [
+			'normal'  => [],
+			'side'    => [],
+			'column3' => [],
+			'column4' => [],
+		];
+		foreach ($presentWidgets as $widget) {
+			$location = $widget->getLocation();
+			if ( isset($columns[$location]) ) {
+				$columns[$location][] = $widget->getId();
+			}
+		}
+
+		$orderedWidgets = [];
+		foreach ($columns as $location => $widgets) {
+			$orderedWidgets[$location] = implode(',', $widgets);
+		}
+
+		return [$orderedWidgets];
 	}
 }

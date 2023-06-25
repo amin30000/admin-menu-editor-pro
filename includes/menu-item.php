@@ -40,7 +40,7 @@ abstract class ameMenuItem {
 	 * Convert a WP menu structure to an associative array.
 	 *
 	 * @param array $item An menu item.
-	 * @param int|string $position The position (index) of the the menu item.
+	 * @param int|string $position The position (index) of the menu item.
 	 * @param string|null $parent The slug of the parent menu that owns this item. Null for top level menus.
 	 * @return array
 	 */
@@ -49,12 +49,12 @@ abstract class ameMenuItem {
 		$default_css_class = ($parent === null) ? 'menu-top' : '';
 		$item = array(
 			'menu_title'   => strval($item[0]),
-			'access_level' => strval($item[1]), //= required capability
-			'file'         => $item[2],
-			'page_title'   => (isset($item[3]) ? strval($item[3]) : ''),
-			'css_class'    => (isset($item[4]) ? strval($item[4]) : $default_css_class),
-			'hookname'     => (isset($item[5]) ? strval($item[5]) : ''), //Used as the ID attr. of the generated HTML tag.
-			'icon_url'     => (isset($item[6]) ? strval($item[6]) : 'dashicons-admin-generic'),
+			'access_level' => (isset($item[1]) ? self::sanitize_string_prop($item[1]) : ''), //= required capability
+			'file'         => (array_key_exists(2, $item) ? $item[2] : ''),
+			'page_title'   => (isset($item[3]) ? self::sanitize_string_prop($item[3]) : ''),
+			'css_class'    => (isset($item[4]) ? self::sanitize_string_prop($item[4]) : $default_css_class),
+			'hookname'     => (isset($item[5]) ? self::sanitize_string_prop($item[5]) : ''), //Used as the ID attr. of the generated HTML tag.
+			'icon_url'     => (isset($item[6]) ? self::sanitize_string_prop($item[6]) : 'dashicons-admin-generic'),
 			'position'     => $position,
 			'parent'       => $parent,
 		);
@@ -86,6 +86,34 @@ abstract class ameMenuItem {
 		$item['template_id'] = self::template_id($item, $parent);
 
 		return array_merge(self::basic_defaults(), $item);
+	}
+
+	/**
+	 * Sanitize a menu property value that is supposed to be a string.
+	 *
+	 * There are certain admin menu properties that are supposed to be strings, but
+	 * in practice some plugins and themes set them to arrays, objects, true/false,
+	 * etc. This function will convert those values to strings, potentially losing
+	 * information in the process.
+	 *
+	 * strval() is not used because it will trigger a PHP warning if the value is
+	 * an array or an object that doesn't have a `__toString()` method.
+	 *
+	 *
+	 * @param mixed $value
+	 * @return string
+	 */
+	protected static function sanitize_string_prop($value) {
+		if ( is_scalar($value) ) {
+			return strval($value);
+		} else if ( is_array($value) ) {
+			if ( empty($value) ) {
+				return '';
+			}
+			return 'array[' . count($value) . ']';
+		} else {
+			return '';
+		}
 	}
 
 	public static function basic_defaults() {
@@ -685,8 +713,10 @@ abstract class ameMenuItem {
 			if ( $result->length > 0 ) {
 				//Remove all matched nodes. We must iterate backwards to prevent messing up the DOMNodeList.
 				for ($i = $result->length - 1; $i >= 0; $i--) {
-					$span = $result->item(0);
-					$span->parentNode->removeChild($span);
+					$span = $result->item($i);
+					if ( $span->parentNode ) {
+						$span->parentNode->removeChild($span);
+					}
 				}
 
 				$innerHtml = '';

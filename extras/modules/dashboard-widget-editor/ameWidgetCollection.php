@@ -2,6 +2,8 @@
 
 /**
  * An ordered collection of dashboard widgets.
+ *
+ * Also contains widget layout configuration, such as widget order and number of columns.
  */
 class ameWidgetCollection {
 	const FORMAT_NAME = 'Admin Menu Editor dashboard widgets';
@@ -11,17 +13,33 @@ class ameWidgetCollection {
 	/**
 	 * @var ameDashboardWidget[]
 	 */
-	private $widgets = array();
+	private $widgets = [];
 
 	/**
 	 * @var array Settings for the special "Welcome to WordPress!" panel.
 	 */
-	private $welcomePanel = array();
+	private $welcomePanel = [];
 
 	/**
 	 * @var string
 	 */
 	public $siteComponentHash = '';
+
+	private $lastModified = 0;
+
+	private $defaultOrderOverrideEnabled = false;
+	private $orderOverridePerActor = [];
+
+	/**
+	 * @var null|int
+	 */
+	private $forcedColumnCount = null;
+	/**
+	 * @var null|int Screen width (in pixels). The forced column count will only
+	 * be used when the screen width is equal to or greater than this value.
+	 */
+	private $forcedColumnStrategy = null;
+	private $forcedColumnsEnabledPerActor = [];
 
 	/**
 	 * Merge the list of standard / built-in widgets with the collection.
@@ -37,9 +55,9 @@ class ameWidgetCollection {
 
 		//Update existing wrapped widgets, add new ones.
 		$previousWidget = null;
-		foreach($presentWidgets as $properties) {
+		foreach ($presentWidgets as $properties) {
 			$wrapper = $this->getWrapper($properties['id']);
-			if ($wrapper === null) {
+			if ( $wrapper === null ) {
 				$wrapper = new ameStandardWidgetWrapper($properties);
 				$this->insertAfter($wrapper, $previousWidget);
 				$changesDetected = true;
@@ -51,7 +69,7 @@ class ameWidgetCollection {
 		}
 
 		//Flag wrappers that are on the list as present and the rest as not present.
-		foreach($this->getWrappedWidgets() as $widget) {
+		foreach ($this->getWrappedWidgets() as $widget) {
 			$changed = $widget->setPresence(array_key_exists($widget->getId(), $presentWidgets));
 			$changesDetected = $changesDetected || $changed;
 		}
@@ -67,24 +85,24 @@ class ameWidgetCollection {
 	 * @return array
 	 */
 	private function convertMetaBoxesToProperties($metaBoxes) {
-		$widgetProperties = array();
+		$widgetProperties = [];
 
-		foreach($metaBoxes as $location => $priorities) {
-			foreach($priorities as $priority => $items) {
-				foreach($items as $standardWidget) {
+		foreach ($metaBoxes as $location => $priorities) {
+			foreach ($priorities as $priority => $items) {
+				foreach ($items as $standardWidget) {
 					//Skip removed widgets. remove_meta_box() replaces widgets that it removes with false.
 					//Also, The Events Calendar somehow creates a widget that's just "true"(?!), so we'll
 					//also skip all entries that are not arrays.
-					if (empty($standardWidget) || !is_array($standardWidget)) {
+					if ( empty($standardWidget) || !is_array($standardWidget) ) {
 						continue;
 					}
 
 					$properties = array_merge(
-						array(
-							'priority' => $priority,
-							'location' => $location,
+						[
+							'priority'     => $priority,
+							'location'     => $location,
 							'callbackArgs' => isset($standardWidget['args']) ? $standardWidget['args'] : null,
-						),
+						],
 						$standardWidget
 					);
 					$widgetProperties[$properties['id']] = $properties;
@@ -102,11 +120,11 @@ class ameWidgetCollection {
 	 * @return ameStandardWidgetWrapper|null
 	 */
 	protected function getWrapper($id) {
-		if (!array_key_exists($id, $this->widgets)) {
+		if ( !array_key_exists($id, $this->widgets) ) {
 			return null;
 		}
 		$widget = $this->widgets[$id];
-		if ($widget instanceof ameStandardWidgetWrapper) {
+		if ( $widget instanceof ameStandardWidgetWrapper ) {
 			return $widget;
 		}
 		return null;
@@ -122,7 +140,7 @@ class ameWidgetCollection {
 	 * @param ameDashboardWidget|null $target
 	 */
 	protected function insertAfter(ameDashboardWidget $widget, ameDashboardWidget $target = null) {
-		if (($target === null) || !array_key_exists($target->getId(), $this->widgets)) {
+		if ( ($target === null) || !array_key_exists($target->getId(), $this->widgets) ) {
 			//Just put it at the bottom.
 			$this->widgets[$widget->getId()] = $widget;
 		} else {
@@ -130,7 +148,7 @@ class ameWidgetCollection {
 
 			$this->widgets = array_merge(
 				array_slice($this->widgets, 0, $offset, true),
-				array($widget->getId() => $widget),
+				[$widget->getId() => $widget],
 				array_slice($this->widgets, $offset, null, true)
 			);
 		}
@@ -144,13 +162,13 @@ class ameWidgetCollection {
 	public function mergeWithWrappersFrom($otherCollection) {
 		$previousWidget = null;
 
-		foreach($otherCollection->getWrappedWidgets() as $otherWidget) {
-			if (!$otherWidget->isPresent()) {
+		foreach ($otherCollection->getWrappedWidgets() as $otherWidget) {
+			if ( !$otherWidget->isPresent() ) {
 				continue;
 			}
 
 			$myWidget = $this->getWrapper($otherWidget->getId());
-			if ($myWidget === null) {
+			if ( $myWidget === null ) {
 				$myWidget = $otherWidget;
 				$this->insertAfter($myWidget, $previousWidget);
 			} else {
@@ -167,9 +185,9 @@ class ameWidgetCollection {
 	 * @return ameStandardWidgetWrapper[]
 	 */
 	protected function getWrappedWidgets() {
-		$results = array();
-		foreach($this->widgets as $widget) {
-			if ($widget instanceof ameStandardWidgetWrapper) {
+		$results = [];
+		foreach ($this->widgets as $widget) {
+			if ( $widget instanceof ameStandardWidgetWrapper ) {
 				$results[] = $widget;
 			}
 		}
@@ -182,9 +200,9 @@ class ameWidgetCollection {
 	 * @return ameStandardWidgetWrapper[]
 	 */
 	public function getMissingWrappedWidgets() {
-		$results = array();
-		foreach($this->getWrappedWidgets() as $widget) {
-			if (!$widget->isPresent()) {
+		$results = [];
+		foreach ($this->getWrappedWidgets() as $widget) {
+			if ( !$widget->isPresent() ) {
 				$results[] = $widget;
 			}
 		}
@@ -197,9 +215,9 @@ class ameWidgetCollection {
 	 * @return ameDashboardWidget[]
 	 */
 	public function getPresentWidgets() {
-		$results = array();
-		foreach($this->widgets as $widget) {
-			if ($widget->isPresent()) {
+		$results = [];
+		foreach ($this->widgets as $widget) {
+			if ( $widget->isPresent() ) {
 				$results[] = $widget;
 			}
 		}
@@ -213,7 +231,7 @@ class ameWidgetCollection {
 	 * @return \ameDashboardWidget|null
 	 */
 	public function getWidgetById($id) {
-		if (array_key_exists($id, $this->widgets)) {
+		if ( array_key_exists($id, $this->widgets) ) {
 			return $this->widgets[$id];
 		}
 		return null;
@@ -238,29 +256,35 @@ class ameWidgetCollection {
 	}
 
 	public function toArray() {
-		$widgets = array();
-		foreach($this->widgets as $widget) {
+		$widgets = [];
+		foreach ($this->widgets as $widget) {
 			$widgets[] = $widget->toArray();
 		}
 
-		$output = array(
-			'format' => array(
-				'name' => self::FORMAT_NAME,
+		return [
+			'format'            => [
+				'name'    => self::FORMAT_NAME,
 				'version' => self::FORMAT_VERSION,
-			),
-			'widgets' => $widgets,
-			'welcomePanel' => $this->welcomePanel,
+			],
+			'widgets'           => $widgets,
+			'welcomePanel'      => $this->welcomePanel,
 			'siteComponentHash' => $this->siteComponentHash,
-		);
+			'lastModified'      => $this->lastModified,
 
-		return $output;
+			'defaultOrderOverrideEnabled' => $this->defaultOrderOverrideEnabled,
+			'orderOverridePerActor'       => $this->orderOverridePerActor,
+
+			'forcedColumnCount'            => $this->forcedColumnCount,
+			'forcedColumnStrategy'         => $this->forcedColumnStrategy,
+			'forcedColumnsEnabledPerActor' => $this->forcedColumnsEnabledPerActor,
+		];
 	}
 
 	/**
 	 * @return string
 	 */
 	public function toJSON() {
-		return json_encode($this->toArray(), JSON_PRETTY_PRINT);
+		return wp_json_encode($this->toArray(), JSON_PRETTY_PRINT);
 	}
 
 	/**
@@ -269,10 +293,10 @@ class ameWidgetCollection {
 	 * @return array [actorId => boolean]
 	 */
 	public function getWelcomePanelVisibility() {
-		if (isset($this->welcomePanel['grantAccess']) && is_array($this->welcomePanel['grantAccess'])) {
+		if ( isset($this->welcomePanel['grantAccess']) && is_array($this->welcomePanel['grantAccess']) ) {
 			return $this->welcomePanel['grantAccess'];
 		}
-		return array();
+		return [];
 	}
 
 	/**
@@ -312,18 +336,56 @@ class ameWidgetCollection {
 		}
 
 		$collection = new self();
-		foreach($input['widgets'] as $widgetProperties) {
+		foreach ($input['widgets'] as $widgetProperties) {
 			$widget = ameDashboardWidget::fromArray($widgetProperties);
 			$collection->widgets[$widget->getId()] = $widget;
 		}
 
 		if ( isset($input['welcomePanel'], $input['welcomePanel']['grantAccess']) ) {
-			$collection->welcomePanel = array(
+			$collection->welcomePanel = [
 				'grantAccess' => (array)($input['welcomePanel']['grantAccess']),
-			);
+			];
 		}
 
 		$collection->siteComponentHash = isset($input['siteComponentHash']) ? strval($input['siteComponentHash']) : '';
+
+		if ( isset($input['lastModified']) && is_numeric($input['lastModified']) ) {
+			$timestamp = intval($input['lastModified']);
+			if (
+				//The timestamp can only refer to a time *after* the lastModified field was added.
+				($timestamp > strtotime('2023-05-23T00:00:00+0000'))
+				//The timestamp can't be too far the future (small offset is allowed due to time zone differences).
+				&& ($collection->lastModified <= (time() + 86400))
+			) {
+				$collection->lastModified = $timestamp;
+			}
+		}
+
+		if ( isset($input['defaultOrderOverrideEnabled']) ) {
+			$collection->defaultOrderOverrideEnabled = (bool)$input['defaultOrderOverrideEnabled'];
+		}
+		if ( isset($input['orderOverridePerActor']) && is_array($input['orderOverridePerActor']) ) {
+			$collection->orderOverridePerActor = $input['orderOverridePerActor'];
+		}
+
+		if ( array_key_exists('forcedColumnCount', $input) ) {
+			$columnCount = $input['forcedColumnCount'];
+			if ( $columnCount !== null ) {
+				$columnCount = max(min(intval($columnCount), 4), 1);
+			}
+			$collection->forcedColumnCount = $columnCount;
+		}
+		if ( array_key_exists('forcedColumnStrategy', $input) ) {
+			$strategy = $input['forcedColumnStrategy'];
+			if ( $strategy !== null ) {
+				$strategy = max(min(intval($strategy), 3000), 1);
+			}
+			$collection->forcedColumnStrategy = $strategy;
+		}
+		if ( isset($input['forcedColumnsEnabledPerActor']) && is_array($input['forcedColumnsEnabledPerActor']) ) {
+			$collection->forcedColumnsEnabledPerActor = $input['forcedColumnsEnabledPerActor'];
+		}
+
 		return $collection;
 	}
 
@@ -334,7 +396,7 @@ class ameWidgetCollection {
 	public static function fromJSON($json) {
 		$input = json_decode($json, true);
 
-		if ($input === null) {
+		if ( $input === null ) {
 			throw new ameInvalidJsonException('Cannot parse widget data. The input is not valid JSON.');
 		}
 
@@ -346,10 +408,9 @@ class ameWidgetCollection {
 	 */
 	public function toDbString() {
 		$serializedData = $this->toJSON();
-		$tags = array();
+		$tags = [];
 
 		if ( function_exists('gzcompress') ) {
-			/** @noinspection PhpComposerExtensionStubsInspection */
 			$compressed = gzcompress($serializedData);
 			if ( is_string($compressed) ) {
 				$serializedData = $compressed;
@@ -399,6 +460,91 @@ class ameWidgetCollection {
 
 		return self::fromJSON($data);
 	}
+
+	/**
+	 * @return bool
+	 */
+	public function isDefaultOrderOverrideEnabled() {
+		return $this->defaultOrderOverrideEnabled;
+	}
+
+	/**
+	 * @param \WP_User $user
+	 * @return bool
+	 */
+	public function isOrderOverrideEnabledFor($user) {
+		if ( !$this->isDefaultOrderOverrideEnabled() ) {
+			return false;
+		}
+		return $this->checkOverrideStatus($this->orderOverridePerActor, $user);
+	}
+
+	/**
+	 * @param \WP_User $user
+	 * @return bool
+	 */
+	public function isColumnOverrideEnabledFor($user) {
+		if ( ($this->forcedColumnCount === null) || empty($this->forcedColumnsEnabledPerActor) ) {
+			return false;
+		}
+		return $this->checkOverrideStatus($this->forcedColumnsEnabledPerActor, $user);
+	}
+
+	/**
+	 * @param array $actorMap
+	 * @param \WP_User $user
+	 * @return bool
+	 */
+	private function checkOverrideStatus($actorMap, $user) {
+		if ( empty($actorMap) || empty($user) ) {
+			return false;
+		}
+
+		$userActor = 'user:' . $user->user_login;
+		if ( isset($actorMap[$userActor]) ) {
+			return $actorMap[$userActor];
+		}
+
+		if ( is_multisite() && is_super_admin($user->ID) ) {
+			if ( isset($actorMap['special:super_admin']) ) {
+				return $actorMap['special:super_admin'];
+			}
+		}
+
+		//Enable override if it's enabled for at least one role.
+		$roles = $user->roles;
+		if ( is_array($roles) ) {
+			foreach ($roles as $roleId) {
+				if ( !empty($actorMap['role:' . $roleId]) ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * @return int
+	 */
+	public function getLastModified() {
+		return $this->lastModified;
+	}
+
+	/**
+	 * @return int|null
+	 */
+	public function getForcedColumnCount() {
+		return $this->forcedColumnCount;
+	}
+
+	/**
+	 * @return int|null
+	 */
+	public function getForcedColumnBreakpoint() {
+		return $this->forcedColumnStrategy;
+	}
 }
 
-class ameInvalidWidgetDataException extends RuntimeException {}
+class ameInvalidWidgetDataException extends RuntimeException {
+}
