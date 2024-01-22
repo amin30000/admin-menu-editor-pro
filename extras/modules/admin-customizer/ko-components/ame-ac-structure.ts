@@ -7,7 +7,7 @@ import {AmeCustomizable} from '../../../pro-customizables/assets/customizable.js
 import Section = AmeCustomizable.Section;
 
 class AmeAcStructure extends KoRendererViewModel {
-	public readonly allSections: Section[] = [];
+	public readonly allNavigationSections: Section[] = [];
 
 	constructor(params: KoComponentParams, $element: JQuery) {
 		super(params, $element);
@@ -21,9 +21,12 @@ class AmeAcStructure extends KoRendererViewModel {
 			this.structure.children
 		);
 
-		//Recursively collect all sections.
+		//Recursively collect all navigable sections. Don't include content
+		//sections: their parents will output them, not this component.
 		function collectChildSections(section: Section, accumulator: Section[] = []) {
-			accumulator.push(section);
+			if (section.preferredRole === 'navigation') {
+				accumulator.push(section);
+			}
 			for (const child of section.children) {
 				if (child instanceof Section) {
 					collectChildSections(child, accumulator);
@@ -32,11 +35,11 @@ class AmeAcStructure extends KoRendererViewModel {
 			return accumulator;
 		}
 
-		this.allSections = collectChildSections(rootSection);
+		this.allNavigationSections = collectChildSections(rootSection);
 
 		//Give the breadcrumb list to each section, if available.
 		if (typeof params.breadcrumbs !== 'undefined') {
-			for (const section of this.allSections) {
+			for (const section of this.allNavigationSections) {
 				section.componentParams.breadcrumbs = params.breadcrumbs;
 			}
 		}
@@ -44,7 +47,7 @@ class AmeAcStructure extends KoRendererViewModel {
 }
 
 export default createRendererComponentConfig(AmeAcStructure, `
-	<!-- ko foreach: allSections -->
+	<!-- ko foreach: allNavigationSections -->
 		<!-- ko component: {name: 'ame-ac-section', params: $data.getComponentParams()} --><!-- /ko -->
 	<!-- /ko -->
 `);

@@ -168,6 +168,8 @@ jQuery(function ($: JQueryStatic) {
 				const value = updatedConfig[key];
 				AmeEditorApi.configDataAdapter.setPath(key, value);
 			}
+
+			$(document).trigger('adminMenuEditor:menuConfigChanged');
 		}
 
 		protected isDialogOpen(newValue: boolean | null = null): boolean {

@@ -762,4 +762,37 @@ abstract class ameMenuItem {
 	public static function clear_per_site_cache() {
 		self::$cached_site_url = null;
 	}
+
+	/**
+	 * Add a CSS class to a submenu item.
+	 *
+	 * The admin menu API doesn't provide a way to do this, but at least as of WP 6.2,
+	 * classes can in fact be added to submenu items.
+	 *
+	 * @param string $parent_slug
+	 * @param string $item_slug
+	 * @param string $css_class
+	 * @return bool
+	 */
+	public static function add_class_to_submenu_item($parent_slug, $item_slug, $css_class) {
+		global $submenu;
+		if ( !isset($submenu[$parent_slug]) || (!is_array($submenu[$parent_slug])) ) {
+			return false;
+		}
+
+		foreach ($submenu[$parent_slug] as &$item) {
+			if ( isset($item[2]) && ($item[2] === $item_slug) ) {
+				if ( empty($item[4]) ) {
+					$item[4] = $css_class;
+				} else if ( is_string($item[4]) ) {
+					$item[4] .= ' ' . $css_class;
+				} else {
+					return false; //Unsupported data type.
+				}
+				return true;
+			}
+		}
+
+		return false;
+	}
 }

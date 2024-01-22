@@ -4,6 +4,9 @@ namespace YahnisElsts\AdminMenuEditor\StyleGenerator\Dsl;
 
 class FunctionCall extends Expression {
 	private $name;
+	/**
+	 * @var Expression[]
+	 */
 	private $args;
 	/**
 	 * @var callable
@@ -30,6 +33,23 @@ class FunctionCall extends Expression {
 		);
 		return call_user_func($this->callback, $actualArgs);
 	}
+
+	public function checkUsedSettingStatus() {
+		$usesSettings = false;
+
+		foreach($this->args as $expr) {
+			list($argUsesSettings, $argHasNonEmptySettings) = $expr->checkUsedSettingStatus();
+			if ( $argHasNonEmptySettings ) {
+				return [true, true];
+			}
+			if ( $argUsesSettings ) {
+				$usesSettings = true;
+			}
+		}
+
+		return [$usesSettings, false];
+	}
+
 
 	/** @noinspection PhpLanguageLevelInspection */
 	#[\ReturnTypeWillChange]

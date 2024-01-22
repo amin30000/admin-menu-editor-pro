@@ -10,6 +10,7 @@ $wsAmeProAutoloader = new AmeAutoloader([
 	'YahnisElsts\\AdminMenuEditor\\DynamicStylesheets\\' => __DIR__ . '/dynamic-stylesheets/',
 	'YahnisElsts\\WpDependencyWrapper\\'                 => __DIR__ . '/../wp-dependency-wrapper',
 	'YahnisElsts\\AdminMenuEditor\\DashboardStyler\\'    => __DIR__ . '/modules/dashboard-styler',
+	'YahnisElsts\\AdminMenuEditor\\WebpackRegistry\\'    => __DIR__ . '/webpack-registry',
 ]);
 
 $wsAmeProAutoloader->register();
@@ -20,8 +21,13 @@ $wsAmeProAutoloader->register();
 //This file only registers scripts that are not part of a specific module. Specific
 //modules can register their own scripts in their own hooks.
 if ( function_exists('add_action') ) {
-	//Register JS assets used on AME pages.
-	function ws_ame_register_customizable_js_lib() {
+	/**
+	 * Register JS assets used on AME pages.
+	 *
+	 * @param \WPMenuEditor $menuEditor
+	 * @return void
+	 */
+	function ws_ame_register_customizable_js_lib($menuEditor) {
 		static $isDone = false;
 		if ( $isDone ) {
 			return;
@@ -46,19 +52,12 @@ if ( function_exists('add_action') ) {
 		$useBundles = defined('WS_AME_USE_BUNDLES') && WS_AME_USE_BUNDLES
 			&& file_exists(AME_ROOT_DIR . '/dist/customizable.bundle.js');
 
-		if ( $useBundles ) {
-			$webpackRuntime = ScriptDependency::create(
-				plugins_url('dist/runtime.bundle.js', AME_ROOT_DIR . '/menu-editor.php'),
-				'ame-webpack-runtime'
-			);
+		if ( $useBundles && $menuEditor ) {
+			$registry = $menuEditor->get_webpack_registry();
 
-			ScriptDependency::create(
-				plugins_url('dist/customizable.bundle.js', AME_ROOT_DIR . '/menu-editor.php'),
-				'ame-customizable-settings-bundle'
-			)
-				->addDependencies(...$customizableDependencies)
-				->addDependencies($webpackRuntime)
-				->register();
+			$customizableBundle = $registry->getWebpackScriptChunk('customizable');
+			$customizableBundle->addDependencies(...$customizableDependencies);
+			$customizableBundle->register();
 		}
 
 		//Register style generator stuff.

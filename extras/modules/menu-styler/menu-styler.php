@@ -17,13 +17,20 @@ use YahnisElsts\WpDependencyWrapper\ScriptDependency;
 class MenuStyler extends \ameModule {
 	private $settings = null;
 
-	const mainScriptHandle = 'ame-menu-styler-ui';
-	const featureScriptHandle = 'ame-menu-styler-js-feats';
-
 	/**
 	 * @var \YahnisElsts\AdminMenuEditor\StyleGenerator\StyleGenerator
 	 */
 	private $styleGenerator = null;
+
+	/**
+	 * @var null|ScriptDependency
+	 */
+	private $featureScript = null;
+
+	/**
+	 * @var null|ScriptDependency
+	 */
+	private $mainScript = null;
 
 	public function __construct($menuEditor) {
 		parent::__construct($menuEditor);
@@ -143,22 +150,34 @@ class MenuStyler extends \ameModule {
 		//a "menuConfigurationLoaded" event handler before the editor loads the menu.
 		//Both scripts use the jQuery(function() { ... }) shortcut and run their
 		//initialization code when the DOM is ready.
-		ScriptDependency::create(
-			plugins_url('menu-styler-ui.js', __FILE__),
-			self::mainScriptHandle
-		)
-			->addDependencies(
-				'jquery',
-				'ame-customizable-settings',
-				'ame-style-generator',
-				'ame-lodash',
-				'ame-jquery-cookie',
-				self::featureScriptHandle
-			)
-			->setTypeToModule()
-			->register();
 
-		$dependencies[] = self::mainScriptHandle;
+		$useBundles = defined('WS_AME_USE_BUNDLES') && WS_AME_USE_BUNDLES;
+		if ( $useBundles ) {
+			//Note: This assumes that the Customizable library is already registered
+			//and its dependencies have been added.
+			$mainScript = $this->menuEditor->get_webpack_registry()->getWebpackEntryPoint('menu-styler-ui');
+			$mainScript->addDependencies('jquery-color'); //Required by the style generator.
+		} else {
+			$mainScript = ScriptDependency::create(
+				plugins_url('menu-styler-ui.js', __FILE__),
+				'ame-menu-styler-ui'
+			)
+				->addDependencies(
+					'ame-customizable-settings',
+					'ame-style-generator'
+				)
+				->setTypeToModule();
+		}
+		$mainScript->addDependencies(
+			'jquery',
+			'ame-lodash',
+			'ame-jquery-cookie',
+			$this->getFeatureScript()
+		)->register();
+
+		$this->mainScript = $mainScript;
+
+		$dependencies[] = $mainScript->getHandle();
 		return $dependencies;
 	}
 
@@ -186,14 +205,17 @@ class MenuStyler extends \ameModule {
 			),
 		];
 
-		wp_add_inline_script(
-			self::mainScriptHandle,
-			sprintf(
-				'window.ameMenuStylerConfig = (%s);',
-				wp_json_encode($scriptData)
-			),
-			'before'
-		);
+		if ( $this->mainScript ) {
+			wp_add_inline_script(
+				$this->mainScript->getHandle(),
+				sprintf(
+					'window.ameMenuStylerConfig = (%s);',
+					wp_json_encode($scriptData)
+				),
+				'before'
+			);
+		}
+
 	}
 
 	public function loadMenuStylerSettings($menuConfig, $storedConfig) {
@@ -243,6 +265,7 @@ class MenuStyler extends \ameModule {
 			],
 			[$s->getSetting('menuBar.submenuPopupWidth')]
 		);
+
 		//Let other components know the custom menu width.
 		$g->addRuleSet(
 			['body'],
@@ -251,13 +274,43 @@ class MenuStyler extends \ameModule {
 				'--ame-ms-collapsed-menu-width' => $s->getSetting('menuBar.collapsedMenuWidth'),
 			]
 		);
+
+		//Push the new theme widget editor to the right to make room for the menu.
+		$g->addMediaQuery(
+			$g->ifSome([
+				$s->getSetting('menuBar.collapsedMenuWidth'),
+				$s->getSetting('menuBar.menuWidth'),
+			]),
+			'screen and (min-width: 783px)',
+			new CssRuleSet(
+				['body:not(.folded) #widgets-editor .interface-interface-skeleton'],
+				['left' => $s->getSetting('menuBar.menuWidth')]
+			),
+			new CssRuleSet(
+				['body.folded #widgets-editor .interface-interface-skeleton'],
+				['left' => $s->getSetting('menuBar.collapsedMenuWidth')]
+			)
+		);
+		//The menu will auto-collapse at or below 960px.
+		$g->addMediaQuery(
+			$g->ifSome([
+				$s->getSetting('menuBar.collapsedMenuWidth'),
+				$s->getSetting('menuBar.menuWidth'),
+			]),
+			'screen and (max-width: 960px) and (min-width: 783px)',
+			new CssRuleSet(
+				['body.auto-fold #widgets-editor .interface-interface-skeleton'],
+				['left' => 'var(--ame-ms-collapsed-menu-width, 36px)']
+			)
+		);
 		//endregion
 
 		//region Menu bar: Full height
-		$g->addSimpleCondition(
-			$s->getSetting('menuBar.layout'),
-			'==',
-			'fullHeight',
+		$g->addMediaQuery(
+			$g->ifLooselyEqual($s->getSetting('menuBar.layout'), 'fullHeight'),
+			//WordPress hides the entire admin menu bar on small screens, so the full
+			//height feature only applies to viewports wider than that threshold.
+			'screen and (min-width: 783px)',
 			new CssRuleSet(
 				[
 					//Note: Selector specificity is intentionally increased to override
@@ -291,12 +344,26 @@ class MenuStyler extends \ameModule {
 					'width'       => 'calc(100% - var(--ame-ms-fh-menu-width, 160px))',
 				]
 			),
-			//Same for the collapsed menu. The default collapsed menu width is 32px.
+			//Same for the collapsed menu. The default collapsed menu width is 36px.
 			new CssRuleSet(
 				['.folded #wpadminbar'],
 				[
-					'margin-left' => 'var(--ame-ms-fh-collapsed-menu-width, 32px)',
-					'width'       => 'calc(100% - var(--ame-ms-fh-collapsed-menu-width, 32px))',
+					'margin-left' => 'var(--ame-ms-fh-collapsed-menu-width, 36px)',
+					'width'       => 'calc(100% - var(--ame-ms-fh-collapsed-menu-width, 36px))',
+				]
+			)
+		);
+
+		//WordPress automatically collapses the menu bar when the viewport is narrow,
+		//so let's use the collapsed menu width then.
+		$g->addMediaQuery(
+			$g->ifLooselyEqual($s->getSetting('menuBar.layout'), 'fullHeight'),
+			'screen and (max-width: 960px) and (min-width: 783px)',
+			new CssRuleSet(
+				['body.auto-fold #wpadminbar'],
+				[
+					'margin-left' => 'var(--ame-ms-fh-collapsed-menu-width, 36px)',
+					'width'       => 'calc(100% - var(--ame-ms-fh-collapsed-menu-width, 36px))',
 				]
 			)
 		);
@@ -434,14 +501,20 @@ class MenuStyler extends \ameModule {
 		//When the menu is collapsed, there is far less space for the logo, so the margins
 		//and padding must be reduced. Since there are currently no separate settings for that
 		//state, we just drop the left/right margins and padding to zero.
-		$g->addRuleSet(
-			['.folded #adminmenu #ame_ms_admin_menu_logo'],
-			[
-				'margin-left'   => '0',
-				'margin-right'  => '0',
-				'padding-left'  => '0',
-				'padding-right' => '0',
-			]
+		$g->addCondition(
+			$g->ifSome([
+				$g->ifImageSettingContainsImage($s->getSetting('logo.baseImage')),
+				$g->ifImageSettingContainsImage($s->getSetting('logo.collapsedImage')),
+			]),
+			new CssRuleSet(
+				['.folded #adminmenu #ame_ms_admin_menu_logo'],
+				[
+					'margin-left'   => '0',
+					'margin-right'  => '0',
+					'padding-left'  => '0',
+					'padding-right' => '0',
+				]
+			)
 		);
 		//endregion
 
@@ -465,19 +538,21 @@ class MenuStyler extends \ameModule {
 		);
 	}
 
-	public function enqueueFeatureScript($isRequired = false) {
-		//Do this only once.
-		static $isScriptEnqueued = false, $featureScript = null;
-		if ( $isScriptEnqueued ) {
-			return;
+	private function getFeatureScript() {
+		if ( $this->featureScript !== null ) {
+			return $this->featureScript;
 		}
 
-		if ( !$featureScript ) {
+		$useBundles = defined('WS_AME_USE_BUNDLES') && WS_AME_USE_BUNDLES;
+		if ( $useBundles ) {
+			$featureScript = $this->menuEditor
+				->get_webpack_registry()
+				->getWebpackEntryPoint('menu-styler-features');
+		} else {
 			$featureScript = ScriptDependency::create(
 				plugins_url('menu-styler-features.js', __FILE__),
-				self::featureScriptHandle
+				'ame-menu-styler-js-feats'
 			)
-				->addDependencies('jquery')
 				->setTypeToModule()
 				//Adding the "async" attribute makes a module script execute sooner,
 				//which is useful to prevent FOUC.
@@ -485,7 +560,21 @@ class MenuStyler extends \ameModule {
 				->setAsync();
 		}
 
-		if ( !wp_script_is($featureScript->getHandle(), 'registered') ) {
+		$featureScript->addDependencies('jquery');
+
+		$this->featureScript = $featureScript;
+		return $featureScript;
+	}
+
+	public function enqueueFeatureScript($isRequired = false) {
+		//Do this only once.
+		static $isScriptEnqueued = false;
+		if ( $isScriptEnqueued ) {
+			return;
+		}
+
+		$featureScript = $this->getFeatureScript();
+		if ( !$featureScript->isRegistered() ) {
 			$featureScript->register();
 		}
 

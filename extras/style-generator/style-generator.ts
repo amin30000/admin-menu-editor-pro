@@ -453,6 +453,22 @@ export namespace AmeStyleGenerator {
 				}
 			}
 			return thenResult;
+		},
+
+		ifImageSettingContainsImage: function (args: { value: unknown, thenResult?: any, elseResult?: any }): any {
+			const thenResult = args.thenResult !== undefined ? args.thenResult : true;
+			const elseResult = args.elseResult !== undefined ? args.elseResult : null;
+
+			if ((typeof args.value !== 'object') || !args.value) {
+				return elseResult;
+			}
+
+			const image: Record<string,unknown> = args.value as Record<string,unknown>;
+			const hasAttachment = !!image.attachmentId;
+			const hasExternalUrl = !!image.externalUrl;
+			const hasImage = hasAttachment || hasExternalUrl;
+
+			return hasImage ? thenResult : elseResult;
 		}
 	}
 

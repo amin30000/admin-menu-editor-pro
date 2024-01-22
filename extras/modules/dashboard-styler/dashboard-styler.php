@@ -286,7 +286,11 @@ class DashboardStyler extends \amePersistentProModule {
 				['maxLength' => 10 * 1024]
 			)
 				->enablePostMessageSupport()
-				->addTags(AbstractSetting::TAG_ADMIN_THEME),
+				->addTags(
+					...(apply_filters('admin_menu_editor-ac_custom_css_enabled', true)
+					? [AbstractSetting::TAG_ADMIN_THEME]
+					: [])
+				),
 		];
 	}
 
@@ -344,14 +348,14 @@ class DashboardStyler extends \amePersistentProModule {
 					$b->auto('headings.h1.textColor'),
 					$b->auto('headings.h1.font'),
 					$b->auto('headings.h1.spacing')
-				),
+				)->id('ame-ds-primary-headings'),
 				$b->section(
 					'Secondary (H2)',
 					$b->auto('headings.h2.textColor'),
 					$b->auto('headings.h2.font'),
 					$b->auto('headings.h2.spacing')
-				)
-			),
+				)->id('ame-ds-secondary-headings')
+			)->id('ame-ds-headings'),
 			$b->section(
 				'Tables',
 				$b->section(
@@ -434,7 +438,7 @@ class DashboardStyler extends \amePersistentProModule {
 						'The custom CSS will be added to all admin pages. '
 						. 'It will be inserted using a <code>&lt;style&gt;</code> element in the page header.'
 					)
-			)
+			)->id('ame-ds-custom-css')
 		)->build();
 	}
 
@@ -533,7 +537,7 @@ class DashboardStyler extends \amePersistentProModule {
 			//Default state.
 			new CssRuleSet(
 				[
-					'.wp-core-ui .button',
+					'.wp-core-ui .button:not(.button-primary)',
 					'.wp-core-ui .button-secondary',
 				],
 				[
@@ -548,8 +552,8 @@ class DashboardStyler extends \amePersistentProModule {
 			//change this if the user has explicitly specified a custom hover color.
 			new CssRuleSet(
 				[
-					'.wp-core-ui .button.hover',
-					'.wp-core-ui .button:hover',
+					'.wp-core-ui .button.hover:not(.button-primary)',
+					'.wp-core-ui .button:hover:not(.button-primary)',
 					'.wp-core-ui .button-secondary:hover',
 				],
 				[
@@ -564,8 +568,8 @@ class DashboardStyler extends \amePersistentProModule {
 			//Focus state.
 			new CssRuleSet(
 				[
-					'.wp-core-ui .button.focus',
-					'.wp-core-ui .button:focus',
+					'.wp-core-ui .button.focus:not(.button-primary)',
+					'.wp-core-ui .button:focus:not(.button-primary)',
 					'.wp-core-ui .button-secondary:focus',
 				],
 				[
@@ -586,8 +590,8 @@ class DashboardStyler extends \amePersistentProModule {
 			$g->ifTruthy($secondaryButtonBorderColor),
 			new CssRuleSet(
 				[
-					'.wp-core-ui .button.focus',
-					'.wp-core-ui .button:focus',
+					'.wp-core-ui .button.focus:not(.button-primary)',
+					'.wp-core-ui .button:focus:not(.button-primary)',
 					'.wp-core-ui .button-secondary:focus',
 				],
 				[
@@ -602,9 +606,9 @@ class DashboardStyler extends \amePersistentProModule {
 			$g->ifTruthy($primaryButtonBackground),
 			new CssRuleSet(
 				[
-					'.wp-core-ui .button.active',
-					'.wp-core-ui .button.active:focus',
-					'.wp-core-ui .button.active:hover',
+					'.wp-core-ui .button.active:not(.button-primary)',
+					'.wp-core-ui .button.active:focus:not(.button-primary)',
+					'.wp-core-ui .button.active:hover:not(.button-primary)',
 				],
 				[
 					'--ame-ds-button-color' => $primaryButtonBackground,
@@ -731,34 +735,71 @@ class DashboardStyler extends \amePersistentProModule {
 			)
 		);
 
+		//Color picker buttons.
+		//When the border radius changes, the "Select Color" element must have its right border
+		//radius adjusted to avoid either creating a gap or an overlap between its background
+		//and the button's border.
+		$g->addCondition(
+			$g->ifSome([
+				$g->compare($s->getSetting('buttons.border.radius.topRight'), '>=', 0),
+				$g->compare($s->getSetting('buttons.border.radius.bottomRight'), '>=', 0),
+			]),
+			new CssRuleSet(
+				['.wp-core-ui .button.wp-color-result .wp-color-result-text'],
+				[
+					'--ame-ds-btn-top-right-radius'    => $s->getSetting('buttons.border.radius.topRight'),
+					'--ame-ds-btn-bottom-right-radius' => $s->getSetting('buttons.border.radius.bottomRight'),
+					'--ame-ds-btn-border-width'        => $s->getSetting('buttons.border.width'),
+					'border-top-right-radius'          => 'calc(var(--ame-ds-btn-top-right-radius, 3px) - var(--ame-ds-btn-border-width, 1px))',
+					'border-bottom-right-radius'       => 'calc(var(--ame-ds-btn-bottom-right-radius, 3px) - var(--ame-ds-btn-border-width, 1px))',
+				]
+			)
+		);
+
 		//General color overrides.
 		//These could be worked into the above rules, but it's clearer to keep them separate.
 		$selectorsByButtonType = [
-			'primary'   => '.wp-core-ui .button-primary',
-			'secondary' => '.wp-core-ui .button-secondary',
-			'addNew'    => '.wrap .page-title-action',
+			'primary'   => ['.wp-core-ui .button-primary'],
+			'secondary' => ['.wp-core-ui .button:not(.button-primary)', '.wp-core-ui .button-secondary'],
+			'addNew'    => ['.wrap .page-title-action'],
 		];
-		foreach ($selectorsByButtonType as $buttonType => $selector) {
+		foreach ($selectorsByButtonType as $buttonType => $selectors) {
 			$g->addRuleSet(
-				[$selector],
+				$selectors,
 				[
 					$s->getSetting('buttons.colors.' . $buttonType . 'Background'),
 					$s->getSetting('buttons.colors.' . $buttonType . 'Text'),
 				]
 			);
+
+			$hoverSelectors = array_map(function ($selector) {
+				return $selector . ':hover';
+			}, $selectors);
 			$g->addRuleSet(
-				[$selector . ':hover'],
+				$hoverSelectors,
 				[
 					$s->getSetting('buttons.colors.' . $buttonType . 'BackgroundHover'),
 					$s->getSetting('buttons.colors.' . $buttonType . 'TextHover'),
 				]
 			);
 		}
+
+		//Let the menu editor know the custom border radius so that it can properly
+		//display the "unsaved changes" indicator.
+		$g->addCondition(
+			$g->ifTruthy($s->getSetting('buttons.border.radius.topRight')),
+			new CssRuleSet(
+				['.wp-core-ui .button'],
+				[
+					'--ame-ds-btn-radius-tr' => $s->getSetting('buttons.border.radius.topRight'),
+				]
+			)
+		);
 	}
 
 	private function addBoxStyles(StyleGenerator $g, AbstractSettingsDictionary $s) {
 		$g->addRuleSet(
-			['.postbox'],
+			['.postbox', '.ws-ame-postbox.ws-ame-postbox'],
 			[
 				$s->getSetting('boxes.containerBackgroundColor'),
 				$s->getSetting('boxes.containerBorder'),
@@ -830,7 +871,11 @@ class DashboardStyler extends \amePersistentProModule {
 		);
 
 		$g->addRuleSet(
-			['.postbox-header'],
+			[
+				'.postbox-header',
+				'.ws_ame_custom_postbox h2.hndle',
+				'.ws-ame-postbox.ws-ame-postbox .ws-ame-postbox-header',
+			],
 			[
 				$s->getSetting('boxes.headerBackgroundColor'),
 
@@ -857,7 +902,11 @@ class DashboardStyler extends \amePersistentProModule {
 				$g->compare($s->getSetting('boxes.containerBorder.radius.topRight'), '>', 0),
 			]),
 			new CssRuleSet(
-				['.postbox-header'],
+				[
+					'.postbox-header',
+					'.ws_ame_custom_postbox h2.hndle',
+					'.ws-ame-postbox .ws-ame-postbox-header',
+				],
 				[
 					//Header's border radius = container's border radius - container's border width.
 					//Using the same radius for both would result in a small gap between the header's
@@ -1040,6 +1089,39 @@ class DashboardStyler extends \amePersistentProModule {
 			)
 		);
 
+		//Set the border radius of the header/footer corners to the table's border radius
+		//minus its border width to prevent the header/footer background color from overflowing
+		//the table borders.
+		$g->addRuleSet(
+			['table.widefat'],
+			['--ame-ds-table-border-width' => $s->getSetting('tables.border.width')]
+		);
+		foreach (['top', 'bottom'] as $vertical) {
+			foreach (['left', 'right'] as $horizontal) {
+				$settingName = 'tables.border.radius.' . $vertical . ucfirst($horizontal);
+				$varName = '--ame-ds-table-border-radius-' . substr($vertical, 0, 1) . substr($horizontal, 0, 1);
+				$property = 'border-' . $vertical . '-' . $horizontal . '-radius';
+
+				$elementSelector = ($vertical === 'top') ? 'thead' : 'tfoot';
+				$childSelector = (($horizontal === 'left') ? 'first' : 'last') . '-child';
+
+				$g->addCondition(
+					$g->ifTruthy($s->getSetting($settingName)),
+					new CssRuleSet(
+						[
+							'table.widefat ' . $elementSelector . ' th:' . $childSelector,
+							'table.widefat ' . $elementSelector . ' td:' . $childSelector,
+						],
+						[
+							$varName  => $s->getSetting($settingName),
+							$property =>
+								'calc(var(' . $varName . ', 0) - var(--ame-ds-table-border-width, 1px))',
+						]
+					)
+				);
+			}
+		}
+
 		//Table header. By default, the footer uses the same styles. Optionally, the user
 		//can override footer styles (see below).
 		$g->addRuleSet(
@@ -1081,10 +1163,44 @@ class DashboardStyler extends \amePersistentProModule {
 			[
 				'table.widefat thead th',
 				'table.widefat thead td',
-				'table.widefat tfoot th',
-				'table.widefat tfoot td',
 			],
 			[$s->getSetting('tables.header.verticalBorderStyle')]
+		);
+		//Vertical border color and width. These need to be set to something in case
+		//cell borders are not enabled for table content, or we'll get browser defaults
+		//(e.g. black borders) when the user changes the border style.
+		$g->addCondition(
+			$g->ifAll([
+				$g->ifTruthy($s->getSetting('tables.header.verticalBorderStyle')),
+				$g->compare($s->getSetting('tables.header.verticalBorderStyle'), '!=', 'none'),
+			]),
+			new CssRuleSet(
+				[
+					'table.widefat thead th',
+					'table.widefat thead td',
+				],
+				[
+					//Vertical border color is either the bottom border color or the cell border color.
+					'border-right-color' => $g->firstNonEmpty([
+						$s->getSetting('tables.header.border.color'),
+						$s->getSetting('tables.cellBorderColor'),
+					]),
+					//Border width defaults to the cell border width or 1 px. Don't use browser
+					//defaults because they might not match the rest of the table.
+					'border-right-width' => $g->firstNonEmpty([
+						$g->cssValue($s->getSetting('tables.verticalCellBorder.width')),
+						'1px',
+					]),
+				]
+			),
+			//Still no border on the rightmost header cell.
+			new CssRuleSet(
+				[
+					'table.widefat thead th:last-child',
+					'table.widefat thead td:last-child',
+				],
+				['border-right-style' => 'none']
+			)
 		);
 
 		//For sortable and sorted column headings, the padding applies to the link
@@ -1120,12 +1236,50 @@ class DashboardStyler extends \amePersistentProModule {
 			[$s->getSetting('tables.footer.border')]
 		);
 		//Vertical borders between footer cells.
+		//Defaults to the same style as the vertical border between header cells.
+		$g->setVariable(
+			'footerVerticalBorderStyle',
+			$s->getSetting('tables.footer.verticalBorderStyle'),
+			$s->getSetting('tables.header.verticalBorderStyle')
+		);
+		$footerVerticalBorderStyle = $g->variable('footerVerticalBorderStyle');
 		$g->addRuleSet(
 			[
 				'table.widefat tfoot th',
 				'table.widefat tfoot td',
 			],
-			[$s->getSetting('tables.footer.verticalBorderStyle')]
+			['border-right-style' => $footerVerticalBorderStyle]
+		);
+		//Vertical border color and width. These only apply to the footer.
+		$g->addCondition(
+			$g->ifAll([
+				$g->ifTruthy($footerVerticalBorderStyle),
+				$g->compare($footerVerticalBorderStyle, '!=', 'none'),
+			]),
+			new CssRuleSet(
+				[
+					'table.widefat tfoot th',
+					'table.widefat tfoot td',
+				],
+				[
+					'border-right-color' => $g->firstNonEmpty([
+						$s->getSetting('tables.footer.border.color'),
+						$s->getSetting('tables.header.border.color'),
+						$s->getSetting('tables.cellBorderColor'),
+					]),
+					'border-right-width' => $g->firstNonEmpty([
+						$g->cssValue($s->getSetting('tables.verticalCellBorder.width')),
+						'1px',
+					]),
+				]
+			),
+			new CssRuleSet(
+				[
+					'table.widefat tfoot th:last-child',
+					'table.widefat tfoot td:last-child',
+				],
+				['border-right-style' => 'none']
+			)
 		);
 
 		//Sortable footer headings.
@@ -1505,7 +1659,7 @@ class DashboardStyler extends \amePersistentProModule {
 	public function outputUserCustomCss() {
 		$settings = $this->loadSettings();
 		$customCss = $settings['customCss'];
-		if ( !empty($customCss) ) {
+		if ( !empty($customCss) && apply_filters('admin_menu_editor-ac_custom_css_enabled', true) ) {
 			//The custom CSS should already be sanitized when it's saved (unless
 			//the user has the "unfiltered_html" capability).
 			//phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
@@ -1514,10 +1668,14 @@ class DashboardStyler extends \amePersistentProModule {
 	}
 
 	public function enqueueAdminCustomizerPreview() {
+		if ( !apply_filters('admin_menu_editor-ac_custom_css_enabled', true) ) {
+			return;
+		}
+
 		$settings = $this->loadSettings();
 
 		ScriptDependency::create(plugins_url('custom-css-preview.js', __FILE__))
-			->addDependencies('jquery', 'ame-admin-customizer-preview')
+			->addDependencies('jquery')
 			->addJsVariable(
 				'wsAmeDsCustomCssPreviewData',
 				[
@@ -1526,7 +1684,6 @@ class DashboardStyler extends \amePersistentProModule {
 				]
 			)
 			->enqueue();
-
 	}
 
 	/**
@@ -1545,6 +1702,10 @@ class DashboardStyler extends \amePersistentProModule {
 	 * @internal
 	 */
 	public function addCustomCssToAdminTheme($addCss) {
+		if ( !apply_filters('admin_menu_editor-ac_custom_css_enabled', true) ) {
+			return;
+		}
+
 		//The custom CSS is usually output separately, but for an admin theme,
 		//we'll just include it in the main stylesheet.
 		$s = $this->loadSettings();
@@ -1552,5 +1713,9 @@ class DashboardStyler extends \amePersistentProModule {
 		if ( !empty($customCss) ) {
 			call_user_func($addCss, $customCss);
 		}
+	}
+
+	public function getExportOptionLabel() {
+		return 'Dashboard styles';
 	}
 }

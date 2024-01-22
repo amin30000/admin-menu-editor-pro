@@ -1466,8 +1466,8 @@ interface RexCapabilityData {
 	menuItems: string[];
 	usedByComponents: string[];
 
-	documentationUrl?: string;
-	permissions?: string[];
+	documentationUrl?: string|null;
+	permissions?: string[]|null;
 	readableName?: string;
 }
 

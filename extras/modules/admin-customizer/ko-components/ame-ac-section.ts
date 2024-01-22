@@ -32,7 +32,20 @@ export class AmeAcSection extends KoContainerViewModel<Section> {
 
 		//To keep the header text alignment consistent when navigating between sections,
 		//let's show something even if there are no breadcrumbs.
-		const emptyBreadcrumbText = 'Admin Menu Editor Pro';
+		const defaultEmptyBreadcrumbText = 'Admin Menu Editor Pro';
+		//Let other modules change the default text.
+		let filteredEmptyBreadcrumbText: unknown = null;
+		if (wp && wp.hooks && wp.hooks.applyFilters) {
+			filteredEmptyBreadcrumbText = wp.hooks.applyFilters(
+				'adminMenuEditor.ac.emptyBreadcrumbText',
+				defaultEmptyBreadcrumbText
+			);
+		}
+		const emptyBreadcrumbText = (
+			(typeof filteredEmptyBreadcrumbText === 'string')
+				? filteredEmptyBreadcrumbText
+				: defaultEmptyBreadcrumbText
+		);
 
 		this.breadcrumbText = ko.pureComputed(() => {
 			if (this.breadcrumbs === null) {
@@ -87,7 +100,14 @@ export class AmeAcSection extends KoContainerViewModel<Section> {
 	}
 
 	static getSectionElementId(section: Section): string {
-		const prefix = 'ame-ac-section-';
+		return AmeAcSection.generateSectionElementId(section, 'ame-ac-section-');
+	}
+
+	static getSectionLinkElementId(section: Section): string {
+		return AmeAcSection.generateSectionElementId(section, 'ame-ac-slink-');
+	}
+
+	protected static generateSectionElementId(section: Section, prefix: string): string {
 		if (section.id) {
 			return prefix + section.id;
 		}

@@ -56,6 +56,29 @@ abstract class Container extends UiElement implements \IteratorAggregate, Contro
 	}
 
 	/**
+	 * Recursively filter the container's children using the specified callback.
+	 *
+	 * The children list is replaced with the filtered list.
+	 *
+	 * @param callable(UiElement):bool $callback
+	 * @return void
+	 */
+	public function recursiveFilterChildrenInPlace($callback) {
+		foreach ($this->children as $key => $child) {
+			//Depth-first traversal.
+			if ( $child instanceof Container ) {
+				$child->recursiveFilterChildrenInPlace($callback);
+			}
+			if ( $callback($child) === false ) {
+				unset($this->children[$key]);
+			}
+		}
+
+		//Re-index the array. Note: array_filter() would not help much since it does not re-index the array.
+		$this->children = array_values($this->children);
+	}
+
+	/**
 	 * @return string
 	 */
 	public function getTitle() {

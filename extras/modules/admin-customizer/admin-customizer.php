@@ -21,6 +21,26 @@ class AmeAdminCustomizer extends \ameModule {
 	const CREATE_THEME_ACTION = 'ws_ame_ac_create_admin_theme';
 	const DOWNLOAD_COOKIE_PREFIX = 'ameAcFileDownload_';
 
+	const LAST_DOWNLOAD_META_KEY = 'ame_ac_last_download';
+
+	//Note: Changeset names are used as slugs, and WP converts slugs to lowercase.
+	const CHANGESET_NAME_CHARACTERS = 'abcdefghijklmnopqrtvwyz0123456789';
+	const CHANGESET_NAME_BASE_LENGTH = 12;
+	const CHANGESET_NAME_CHECKSUM_LENGTH = 2;
+
+	/**
+	 * Special changeset name that is used when previewing a changeset that hasn't been saved
+	 * yet, or for an empty changeset created when opening the customizer.
+	 *
+	 * Note: Must only contain characters allowed in changeset names.
+	 *
+	 * @var string
+	 */
+	const TEMPORARY_CHANGESET_NAME = 'temporary000';
+
+	const PROMPT_MODE_UNSAVED_CHANGES = 1;
+	const PROMPT_MODE_UNPUBLISHED_CHANGES = 2;
+
 	/**
 	 * @var AbstractSetting[]
 	 */
@@ -61,6 +81,8 @@ class AmeAdminCustomizer extends \ameModule {
 	 */
 	protected $registeredStyleGenerators = [];
 
+	private $menuRegistrationDone = false;
+
 	public function __construct($menuEditor) {
 		parent::__construct($menuEditor);
 
@@ -68,7 +90,17 @@ class AmeAdminCustomizer extends \ameModule {
 			$this->initializePreviewFrame();
 		}
 
-		add_action('admin_menu', [$this, 'addAdminMenu']);
+		//Show the AC menu item below the main "Menu Editor Pro" item by default. Note that using
+		//the custom hook means that only users who can access the menu editor will see this item.
+		add_action('admin_menu_editor-editor_menu_registered', [$this, 'addAdminMenu']);
+		//Alternatively, when using filters to change AC access requirements,
+		//we may need to register the menu item independently of the menu editor.
+		add_action(
+			'admin_menu',
+			[$this, 'maybeAddStandaloneAdminMenu'],
+			$this->menuEditor->get_magic_hook_priority() - 1
+		);
+
 		add_action('init', [$this, 'registerChangesetPostType']);
 		add_action('transition_post_status', [$this, 'applyChangesOnPublish'], 10, 3);
 
@@ -78,20 +110,46 @@ class AmeAdminCustomizer extends \ameModule {
 	}
 
 	public function addAdminMenu() {
+		//This method can be called from two different hooks, but it should only
+		//run once.
+		if ( $this->menuRegistrationDone ) {
+			return;
+		}
+		$this->menuRegistrationDone = true;
+
 		if ( !$this->userCanAccessModule() ) {
 			return;
 		}
 
+		//Do not show this menu item inside the preview frame.
+		if ( $this->isInPreviewFrame() ) {
+			return;
+		}
+
+		$requiredCapability = $this->getBasicAccessCapability();
+
 		$hook = add_options_page(
 			'Admin Customizer',
 			'Admin Customizer',
-			'manage_options',
+			$requiredCapability ?: 'manage_options',
 			'ame-admin-customizer',
 			[$this, 'outputAdminPage']
 		);
 
 		add_action('load-' . $hook, [$this, 'initCustomizerPage']);
 		add_action('load-' . $hook, [$this, 'disableAdminHeader']);
+
+		\ameMenuItem::add_class_to_submenu_item(
+			'options-general.php',
+			'ame-admin-customizer',
+			'ws-ame-secondary-am-item'
+		);
+	}
+
+	public function maybeAddStandaloneAdminMenu() {
+		if ( !$this->menuEditor->current_user_can_edit_menu() && $this->userCanAccessModule() ) {
+			$this->addAdminMenu();
+		}
 	}
 
 	public function outputAdminPage() {
@@ -111,6 +169,34 @@ class AmeAdminCustomizer extends \ameModule {
 	}
 
 	public function initCustomizerPage() {
+		//Disallow frame embedding: either in the preview frame, or anywhere else.
+		header('X-Frame-Options: DENY');
+
+		//Disallow recursion. This is slightly different from the above restriction
+		//because a preview URL can also be opened in its own tab, not just in a frame.
+		if ( $this->isInPreviewFrame() || $this->isPreviewFrameInitialized ) {
+			//We also add a custom "back" link to the error page. We'll need to
+			//add the AC preview params directly because the preview JS currently
+			//doesn't run on the error page.
+			$backUrl = add_query_arg(
+				[
+					'ame-ac-preview'   => 1,
+					'ame-ac-changeset' => $this->currentChangeset->getName() ?: self::TEMPORARY_CHANGESET_NAME,
+				],
+				admin_url('index.php')
+			);
+
+			wp_die(
+				'You cannot access this page in the preview frame.'
+				. '<br><br>' . sprintf(
+					'<a href="%s">Back to the Dashboard</a>',
+					esc_attr($backUrl)
+				),
+				'',
+				['back_link' => false] //Suppress the default "back" link.
+			);
+		}
+
 		add_filter('admin_menu_editor-is_admin_customizer', '__return_true');
 
 		$this->registerCustomizableItems();
@@ -137,6 +223,9 @@ class AmeAdminCustomizer extends \ameModule {
 
 		$this->structure->enqueueKoComponentDependencies();
 
+		//Enqueue wp-hooks separately in case it's not available for some reason.
+		wp_enqueue_script('wp-hooks');
+
 		$settingInfo = AbstractSetting::serializeSettingsForJs(
 			$this->registeredSettings,
 			AbstractSetting::SERIALIZE_INCLUDE_VALUE
@@ -154,49 +243,66 @@ class AmeAdminCustomizer extends \ameModule {
 		);
 
 		$scriptData = [
-			'ajaxUrl'             => admin_url('admin-ajax.php'),
-			'changesetName'       => $this->currentChangeset->getName(),
-			'changesetItemCount'  => count($this->currentChangeset),
-			'changesetStatus'     => $this->currentChangeset->getStatus(),
+			'ajaxUrl'                => admin_url('admin-ajax.php'),
+			'changesetName'          => $this->currentChangeset->getName() ?: '',
+			'changesetItemCount'     => count($this->currentChangeset),
+			'changesetStatus'        => $this->currentChangeset->getStatus(),
+			'changesetThemeMetadata' => $this->currentChangeset->getAdminThemeMetadata(),
+
 			'saveChangesetNonce'  => wp_create_nonce(self::SAVE_CHANGESET_ACTION),
 			'trashChangesetNonce' => wp_create_nonce(self::TRASH_CHANGESET_ACTION),
 			'refreshPreviewNonce' => wp_create_nonce(self::REFRESH_PREVIEW_ACTION),
 			'createThemeNonce'    => wp_create_nonce(self::CREATE_THEME_ACTION),
 			'settings'            => $settingInfo,
 			'interfaceStructure'  => $this->structure->serializeForJs(),
-			'initialPreviewUrl'   => add_query_arg(
+
+			'changesetPathTemplate'     => null,
+			'changesetPushStateEnabled' => false,
+			'customBasePath'            => null,
+
+			'initialPreviewUrl'  => add_query_arg(
 				[
 					'ame-ac-preview'   => 1,
-					'ame-ac-changeset' => $this->currentChangeset->getName(),
+					'ame-ac-changeset' => $this->currentChangeset->getName() ?: self::TEMPORARY_CHANGESET_NAME,
 				],
-				self_admin_url('options-general.php')
+				apply_filters(
+					'admin_menu_editor-ac_initial_preview_url',
+					self_admin_url('options-general.php')
+				)
 			),
-			'allowedPreviewUrls'  => $this->getAllowedPreviewBaseUrls(),
-			'allowedCommOrigins'  => $this->getAllowedCommunicationOrigins(),
-			'isWpDebugEnabled'    => defined('WP_DEBUG') && WP_DEBUG,
+			'allowedPreviewUrls' => $this->getAllowedPreviewBaseUrls(),
+			'allowedCommOrigins' => $this->getAllowedCommunicationOrigins(),
+			'isWpDebugEnabled'   => defined('WP_DEBUG') && WP_DEBUG,
+			'exitPromptMode'     => self::PROMPT_MODE_UNPUBLISHED_CHANGES,
 		];
+
+		$scriptData = apply_filters('admin_menu_editor-ac_script_data', $scriptData);
+		if ( empty($scriptData) || !is_array($scriptData) ) {
+			throw new \UnexpectedValueException(
+				'Invalid script data returned by the filter "admin_menu_editor-ac_script_data".'
+			);
+		}
 
 		$useBundles = defined('WS_AME_USE_BUNDLES') && WS_AME_USE_BUNDLES
 			&& file_exists(AME_ROOT_DIR . '/dist/admin-customizer.bundle.js');
 
-		$customizerDep = ScriptDependency::create(
-			$useBundles
-				? plugins_url('dist/admin-customizer.bundle.js', AME_ROOT_DIR . '/stub')
-				: plugins_url('admin-customizer.js', __FILE__),
-			'ame-admin-customizer-js'
-		);
 		if ( $useBundles ) {
-			$customizerDep->addDependencies(
-				'ame-webpack-runtime',
-				'ame-customizable-settings-bundle',
-				//The bundled style generator depends on this.
-				'jquery-color'
-			);
+			$customizerDep = $this->menuEditor
+				->get_webpack_registry()
+				->getWebpackEntryPoint('admin-customizer');
+
+			//The bundled style generator depends on jquery-color.
+			$customizerDep->addDependencies('jquery-color');
 		} else {
+			$customizerDep = ScriptDependency::create(
+				plugins_url('admin-customizer.js', __FILE__),
+				'ame-admin-customizer-js'
+			);
 			$customizerDep->addDependencies('ame-admin-customizer-base', 'ame-customizable-settings');
 			//It's an ES6 module, but only when not when compiled with Webpack.
 			$customizerDep->setTypeToModule();
 		}
+
 		$customizerDep->addDependencies(
 			'jquery',
 			'jquery-ui-menu',
@@ -221,8 +327,15 @@ class AmeAdminCustomizer extends \ameModule {
 		}
 		$this->isRegistrationDone = true;
 
-		$this->structure = new Controls\InterfaceStructure('Admin Customizer');
+		$this->structure = new Controls\InterfaceStructure(
+			apply_filters('admin_menu_editor-ac_root_container_title', 'Admin Customizer')
+		);
 		do_action('admin_menu_editor-register_ac_items', $this);
+
+		//Allow other modules to modify the structure more directly.
+		//This filter should be used only when necessary. For simply adding new items,
+		//use the "admin_menu_editor-register_ac_items" action instead.
+		$this->structure = apply_filters('admin_menu_editor-ac_structure', $this->structure);
 
 		//Register all settings used by controls. This way modules generally don't
 		//have to do it explicitly.
@@ -391,20 +504,33 @@ class AmeAdminCustomizer extends \ameModule {
 			plugins_url('preview.css', __FILE__)
 		);
 
-		ScriptDependency::create(
-			plugins_url('preview-handler.js', __FILE__),
-			'ame-admin-customizer-preview'
-		)
-			->setTypeToModule() //Uses other modules.
-			->setAsync() //Load sooner.
+		$useBundles = defined('WS_AME_USE_BUNDLES') && WS_AME_USE_BUNDLES;
+		if ( $useBundles ) {
+			$script = $this->menuEditor
+				->get_webpack_registry()
+				->getWebpackScriptChunk('admin-customizer-preview')
+				->addDependencies('jquery-color'); //Required by the bundled style generator.
+		} else {
+			$script = ScriptDependency::create(
+				plugins_url('preview-handler.js', __FILE__),
+				'ame-admin-customizer-preview'
+			)
+				->setTypeToModule() //Uses other modules.
+				->setAsync() //Load sooner.
+				->addDependencies(
+					'ame-admin-customizer-base',
+					'ame-customizable-settings',
+					'ame-style-generator'
+				);
+		}
+
+		$script
 			->addDependencies(
 				'jquery',
-				'ame-admin-customizer-communicator',
-				'ame-customizable-settings',
-				'ame-style-generator'
+				'ame-admin-customizer-communicator'
 			)
 			->addJsVariable('wsAmeAcPreviewData', [
-				'changesetName'       => $this->currentChangeset->getName(),
+				'changesetName'       => $this->currentChangeset->getName() ?: self::TEMPORARY_CHANGESET_NAME,
 				'allowedPreviewUrls'  => $this->getAllowedPreviewBaseUrls(),
 				'allowedCommOrigins'  => $this->getAllowedCommunicationOrigins(),
 				'isWpDebugEnabled'    => defined('WP_DEBUG') && WP_DEBUG,
@@ -426,10 +552,10 @@ class AmeAdminCustomizer extends \ameModule {
 
 	private function registerBaseScripts() {
 		if ( function_exists('ws_ame_register_customizable_js_lib') ) {
-			ws_ame_register_customizable_js_lib();
+			ws_ame_register_customizable_js_lib($this->menuEditor);
 		}
 
-		$base = ScriptDependency::create(
+		ScriptDependency::create(
 			plugins_url('admin-customizer-base.js', __FILE__),
 			'ame-admin-customizer-base'
 		)
@@ -441,7 +567,7 @@ class AmeAdminCustomizer extends \ameModule {
 			plugins_url('communicator.js', __FILE__),
 			'ame-admin-customizer-communicator'
 		)
-			->addDependencies('jquery', $base)
+			->addDependencies('jquery')
 			->register();
 	}
 
@@ -536,15 +662,15 @@ class AmeAdminCustomizer extends \ameModule {
 		if ( empty($this->changesetName) ) {
 			$this->changesetName = $this->getChangesetNameFromRequest()->getOrElse(null);
 		}
-		if ( empty($this->changesetName) ) {
+		if ( empty($this->changesetName) || ($this->changesetName === self::TEMPORARY_CHANGESET_NAME) ) {
 			//This can happen if the customizer has a created a new changeset,
 			//but hasn't saved it yet. Let's use a temporary empty changeset.
 			$this->currentChangeset = new AcChangeset();
 			return;
 		}
 
-		//Changeset name must be a UUID.
-		if ( !wp_is_uuid($this->changesetName) ) {
+		//Changeset name must be valid.
+		if ( !$this->isSyntacticallyValidChangesetName($this->changesetName) ) {
 			wp_die('Invalid changeset name.', 400);
 		}
 
@@ -562,9 +688,9 @@ class AmeAdminCustomizer extends \ameModule {
 	private function getChangesetNameFromRequest() {
 		//phpcs:disable WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput
 		if ( !empty($_POST['ame-ac-changeset']) ) {
-			return Option::fromValue(sanitize_key(strval($_POST['ame-ac-changeset'])));
+			return Option::fromValue($this->sanitizeChangesetName(strval($_POST['ame-ac-changeset'])));
 		} else if ( isset($_GET['ame-ac-changeset']) ) {
-			return Option::fromValue(sanitize_key(strval($_GET['ame-ac-changeset'])));
+			return Option::fromValue($this->sanitizeChangesetName(strval($_GET['ame-ac-changeset'])));
 		}
 		//phpcs:enable
 		return None::getInstance();
@@ -634,7 +760,7 @@ class AmeAdminCustomizer extends \ameModule {
 			return add_query_arg(
 				[
 					'ame-ac-preview'   => '1',
-					'ame-ac-changeset' => $this->currentChangeset->getName(),
+					'ame-ac-changeset' => $this->currentChangeset->getName() ?: self::TEMPORARY_CHANGESET_NAME,
 				],
 				$url
 			);
@@ -660,10 +786,14 @@ class AmeAdminCustomizer extends \ameModule {
 		//Load the changeset specified in a query parameter, load the most recent
 		//draft changeset, or create a new changeset.
 		$strategies = [
-			[$this, 'loadRequestedChangeset'],
-			[$this, 'getLatestUnfinishedChangeset'],
-			[$this, 'createNewChangeset'],
+			'requested'     => [$this, 'loadRequestedChangeset'],
+			'new-on-demand' => [$this, 'createNewChangesetOnDemand'],
+			'unfinished'    => [$this, 'getLatestUnfinishedChangeset'],
+			'new'           => [$this, 'createNewChangeset'],
 		];
+		//Let other modules and plugins filter the strategies.
+		$strategies = apply_filters('admin_menu_editor-ac_initial_changeset_strategies', $strategies);
+
 		foreach ($strategies as $strategy) {
 			/** @var Option<AcChangeset> $changeset */
 			$changeset = call_user_func($strategy);
@@ -684,7 +814,19 @@ class AmeAdminCustomizer extends \ameModule {
 	 */
 	private function loadRequestedChangeset() {
 		return $this->getChangesetNameFromRequest()->flatMap(function ($name) {
-			return $this->loadChangeset($name);
+			if ( $name === self::TEMPORARY_CHANGESET_NAME ) {
+				//Create a temporary changeset for this request.
+				return Option::fromValue(new AcChangeset());
+			}
+
+			$result = $this->loadChangeset($name);
+			if ( $result->isDefined() ) {
+				//For optional stats. The base plugin doesn't track views for changesets,
+				//but an add-on could.
+				do_action('admin_menu_editor-ac_requested_changeset_loaded', $result->get());
+			}
+
+			return $result;
 		});
 	}
 
@@ -759,8 +901,28 @@ class AmeAdminCustomizer extends \ameModule {
 		return None::getInstance();
 	}
 
+	/**
+	 * @return Option<AcChangeset>
+	 */
+	private function createNewChangesetOnDemand() {
+		$isNewChangesetRequested = false;
+
+		//phpcs:disable WordPress.Security.NonceVerification,WordPress.Security.ValidatedSanitizedInput
+		if ( isset($_POST['_ame-ac-new-changeset']) ) {
+			$isNewChangesetRequested = (strval($_POST['_ame-ac-new-changeset']) === '1');
+		} else if ( isset($_GET['_ame-ac-new-changeset']) ) {
+			$isNewChangesetRequested = (strval($_GET['_ame-ac-new-changeset']) === '1');
+		}
+		//phpcs:enable
+
+		if ( $isNewChangesetRequested ) {
+			return $this->createNewChangeset();
+		}
+		return None::getInstance();
+	}
+
 	private function createNewChangeset() {
-		$name = wp_generate_uuid4();
+		$name = $this->generateChangesetName();
 		$changeset = new AcChangeset($name);
 
 		$postId = $this->saveChangeset($changeset);
@@ -769,6 +931,66 @@ class AmeAdminCustomizer extends \ameModule {
 		}
 
 		return Option::fromValue($changeset);
+	}
+
+	/**
+	 * Generate a random changeset name.
+	 *
+	 * @return string
+	 */
+	private function generateChangesetName() {
+		$base = '';
+		for ($i = 0; $i < self::CHANGESET_NAME_BASE_LENGTH; $i++) {
+			$randomIndex = wp_rand(0, strlen(self::CHANGESET_NAME_CHARACTERS) - 1);
+			$base .= self::CHANGESET_NAME_CHARACTERS[$randomIndex];
+		}
+
+		//Pre-sanitize the base name to avoid calculating the checksum on an invalid name.
+		$base = $this->sanitizeChangesetName($base);
+
+		$checksum = $this->generateChangesetNameChecksum($base);
+		return $base . $checksum;
+	}
+
+	private function generateChangesetNameChecksum($baseName) {
+		$hash = strtolower(sha1($baseName)); //Better algorithms are available, but require PHP 7.1+.
+		return substr($hash, 0, self::CHANGESET_NAME_CHECKSUM_LENGTH);
+	}
+
+	/**
+	 * Verify that a changeset name is syntactically valid. This does not check
+	 * if the changeset actually exists.
+	 *
+	 * @param string $name
+	 * @return bool
+	 */
+	private function isSyntacticallyValidChangesetName($name) {
+		if ( !is_string($name) ) {
+			return false;
+		}
+
+		$expectedLength = self::CHANGESET_NAME_BASE_LENGTH + self::CHANGESET_NAME_CHECKSUM_LENGTH;
+		if ( strlen($name) !== $expectedLength ) {
+			return false;
+		}
+
+		$base = substr($name, 0, self::CHANGESET_NAME_BASE_LENGTH);
+		$checksum = substr($name, self::CHANGESET_NAME_BASE_LENGTH);
+		$expectedChecksum = $this->generateChangesetNameChecksum($base);
+
+		return ($checksum === $expectedChecksum);
+	}
+
+	/**
+	 * @param mixed $name
+	 * @return string
+	 */
+	private function sanitizeChangesetName($name) {
+		if ( is_scalar($name) ) {
+			$name = strtolower((string)$name);
+			return preg_replace('/[^a-z0-9]/', '', $name);
+		}
+		return '';
 	}
 
 	/**
@@ -792,7 +1014,7 @@ class AmeAdminCustomizer extends \ameModule {
 			}
 
 			$postArray['post_type'] = self::CHANGESET_POST_TYPE;
-			$postArray['post_status'] = 'auto-draft'; //Default.
+			$postArray['post_status'] = apply_filters('admin_menu_editor-ac_new_changeset_status', 'auto-draft');
 			$postArray['post_name'] = $name;
 			$postArray['post_title'] = $name;
 			$postArray['post_author'] = get_current_user_id();
@@ -833,6 +1055,15 @@ class AmeAdminCustomizer extends \ameModule {
 		if ( !$existingPostId ) {
 			$changeset->setPostId($postId);
 		}
+
+		/**
+		 * Fires after a changeset has been saved.
+		 *
+		 * @param AcChangeset $changeset The changeset that was saved.
+		 * @param bool $isNew            True if the changeset was just created, false if it was updated.
+		 */
+		do_action('admin_menu_editor-ac_changeset_saved', $changeset, empty($existingPostId));
+
 		return $postId;
 	}
 
@@ -879,9 +1110,41 @@ class AmeAdminCustomizer extends \ameModule {
 			? 'manage_options'
 			: 'do_not_allow';
 
+		$cptCapabilities = [
+			'create_posts'           => $capability,
+			'delete_others_posts'    => $capability,
+			'delete_posts'           => $capability,
+			'delete_private_posts'   => $capability,
+			'delete_published_posts' => $capability,
+			'edit_others_posts'      => $capability,
+			'edit_posts'             => $capability,
+			'edit_private_posts'     => $capability,
+			'edit_published_posts'   => 'do_not_allow',
+			'publish_posts'          => $capability,
+			'read'                   => 'read',
+			'read_private_posts'     => $capability,
+
+			/*
+			The "edit_post", "delete_post", and "read_post" keys are intentionally
+			omitted. Using these keys makes WordPress treat the specified capability
+			as a meta capability.
+
+			For example, if we set "delete_post" to "manage_options", every time
+			something checks the "manage_options" capability, WordPress will try
+			to map it to "delete_post", which will fail without a post ID. This
+			would effectively make the "manage_options" capability useless.
+			*/
+		];
+
+		$cptCapabilities = apply_filters('admin_menu_editor-ac_changeset_capabilities', $cptCapabilities);
+
 		register_post_type(
 			self::CHANGESET_POST_TYPE,
 			[
+				'label'       => 'AC Changesets',
+				'description' => 'For internal use. Changesets for the Admin Customizer module'
+					. ' that is part of the Admin Menu Editor Pro plugin.',
+
 				'public'           => false,
 				'hierarchical'     => false,
 				'rewrite'          => false,
@@ -899,31 +1162,7 @@ class AmeAdminCustomizer extends \ameModule {
 				 */
 				'map_meta_cap'     => true,
 				'capability_type'  => self::CHANGESET_POST_TYPE,
-				'capabilities'     => [
-					'create_posts'           => $capability,
-					'delete_others_posts'    => $capability,
-					'delete_posts'           => $capability,
-					'delete_private_posts'   => $capability,
-					'delete_published_posts' => $capability,
-					'edit_others_posts'      => $capability,
-					'edit_posts'             => $capability,
-					'edit_private_posts'     => $capability,
-					'edit_published_posts'   => 'do_not_allow',
-					'publish_posts'          => $capability,
-					'read'                   => 'read',
-					'read_private_posts'     => $capability,
-
-					/*
-					The "edit_post", "delete_post", and "read_post" keys are intentionally
-					omitted. Using these keys makes WordPress treat the specified capability
-					as a meta capability.
-
-					For example, if we set "delete_post" to "manage_options", every time
-					something checks the "manage_options" capability, WordPress will try
-					to map it to "delete_post", which will fail without a post ID. This
-					would effectively make the "manage_options" capability useless.
-					*/
-				],
+				'capabilities'     => $cptCapabilities,
 			]
 		);
 	}
@@ -946,19 +1185,32 @@ class AmeAdminCustomizer extends \ameModule {
 		/** Should we save the changeset even if some values are invalid? */
 		$partialUpdatesAllowed = true;
 
-		//The list of modified settings must be provided.
-		if ( !isset($post['modified']) ) {
-			wp_send_json_error(['message' => 'Missing "modified" parameter.'], 400);
-			exit;
-		}
+		$hasModifiedSettings = isset($post['modified']);
+		$hasThemeMetadata = array_key_exists('adminThemeMetadata', $post);
 
-		$modified = json_decode((string)($post['modified']), true);
-		if ( !is_array($modified) ) {
+		//At least one of the above must be present.
+		if ( !($hasModifiedSettings || $hasThemeMetadata) ) {
 			wp_send_json_error(
-				['message' => 'Invalid "modified" parameter. It must be a JSON object.'],
+				[
+					'message' => 'Missing parameters. At least one of "modified" or '
+						. '"adminThemeMetadata" must be present.',
+				],
 				400
 			);
 			exit;
+		}
+
+		if ( $hasModifiedSettings ) {
+			$modified = json_decode((string)($post['modified']), true);
+			if ( !is_array($modified) ) {
+				wp_send_json_error(
+					['message' => 'Invalid "modified" parameter. It must be a JSON object.'],
+					400
+				);
+				exit;
+			}
+		} else {
+			$modified = [];
 		}
 
 		//We'll need the post type object to check user permissions.
@@ -981,11 +1233,8 @@ class AmeAdminCustomizer extends \ameModule {
 				exit;
 			}
 
-			$changeset = new AcChangeset(wp_generate_uuid4());
+			$changeset = new AcChangeset($this->generateChangesetName());
 		} else {
-			/**
-			 * @var Option<AcChangeset> $csOption
-			 */
 			$csOption = $this->loadChangeset((string)($post['changeset']));
 			if ( $csOption->isEmpty() ) {
 				wp_send_json_error(['message' => 'Changeset not found.'], 400);
@@ -994,11 +1243,30 @@ class AmeAdminCustomizer extends \ameModule {
 			$changeset = $csOption->get();
 
 			if ( !current_user_can('edit_post', $changeset->getPostId()) ) {
-				wp_send_json_error(
-					$response->error('You do not have the required permissions to edit this changeset.'),
-					403
+				//Optionally, if the user can't edit the current changeset, we can automatically
+				//create a new copy that they can edit.
+				$autoDuplicateIfInaccessible = apply_filters(
+					'admin_menu_editor-ac_auto_dup_if_inaccessible',
+					false
 				);
-				exit;
+				if ( $autoDuplicateIfInaccessible ) {
+					if ( !current_user_can($postType->cap->create_posts) ) {
+						wp_send_json_error(
+							['message' => 'You do not have permission to edit this changeset or to create new changesets.'],
+							403
+						);
+						exit;
+					}
+					//Make a copy of the changeset.
+					$changeset = $changeset->duplicate($this->generateChangesetName());
+					$createNewChangeset = true;
+				} else {
+					wp_send_json_error(
+						$response->error('You do not have the required permissions to edit this changeset.'),
+						403
+					);
+					exit;
+				}
 			}
 		}
 		/** @var AcChangeset $changeset */
@@ -1079,6 +1347,47 @@ class AmeAdminCustomizer extends \ameModule {
 			exit;
 		}
 
+		//Parse and validate adminThemeMetadata.
+		$wasAdminThemeMetadataModified = false;
+		if ( $hasThemeMetadata ) {
+			$inputMetadata = json_decode((string)($post['adminThemeMetadata']), true);
+			if ( !$inputMetadata && (json_last_error() !== JSON_ERROR_NONE) ) {
+				$errorMsg = json_last_error_msg();
+				wp_send_json_error(
+					$response->error('Invalid "adminThemeMetadata" parameter: ' . $errorMsg),
+					400
+				);
+				exit;
+			}
+
+			if ( !is_array($inputMetadata) && ($inputMetadata !== null) ) {
+				wp_send_json_error(
+					['message' => 'Invalid "adminThemeMetadata" parameter. It must be a JSON object or NULL.'],
+					400
+				);
+				exit;
+			}
+
+			if ( is_array($inputMetadata) ) {
+				try {
+					$adminThemeMetadata = AcAdminThemeMetadata::parseArray($inputMetadata);
+				} catch (\InvalidArgumentException $e) {
+					wp_send_json_error(
+						$response->error('Invalid "adminThemeMetadata" parameter: ' . $e->getMessage()),
+						400
+					);
+					exit;
+				}
+			} else {
+				$adminThemeMetadata = null;
+			}
+
+			//Store the metadata.
+			$changeset->setAdminThemeMetadata($adminThemeMetadata);
+			$wasAdminThemeMetadataModified = true;
+			$response->addNote('adminThemeMetadata updated.');
+		}
+
 		//A published or trashed changeset cannot be modified.
 		$currentStatus = $changeset->getStatus();
 		if ( in_array($currentStatus, ['publish', 'future', 'trash']) ) {
@@ -1129,7 +1438,7 @@ class AmeAdminCustomizer extends \ameModule {
 
 		$response->mergeWith(['updatedValues' => $successfulChanges]);
 
-		if ( ($successfulChanges > 0) || $createNewChangeset || ($newStatus !== null) ) {
+		if ( ($successfulChanges > 0) || $createNewChangeset || ($newStatus !== null) || $wasAdminThemeMetadataModified ) {
 			$changeset->setLastModifiedToNow();
 			$saved = $this->saveChangeset($changeset, $newStatus);
 			if ( is_wp_error($saved) ) {
@@ -1274,8 +1583,24 @@ class AmeAdminCustomizer extends \ameModule {
 		wp_trash_post($post->ID);
 	}
 
-	private function userCanAccessModule() {
+	public function userCanAccessModule() {
+		$requiredCapability = $this->getBasicAccessCapability();
+		if ( !empty($requiredCapability) ) {
+			return current_user_can($requiredCapability);
+		}
+
 		return $this->menuEditor->current_user_can_edit_menu();
+	}
+
+	/**
+	 * @return string|null
+	 */
+	private function getBasicAccessCapability() {
+		$result = apply_filters('admin_menu_editor-ac_access_capability', null);
+		if ( !is_string($result) && !is_null($result) ) {
+			throw new \RuntimeException('Invalid return value from the admin_menu_editor-ac_access_capability filter.');
+		}
+		return $result;
 	}
 
 	/**
@@ -1490,6 +1815,12 @@ class AmeAdminCustomizer extends \ameModule {
 
 		//phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- $zipFileContent is binary data.
 		echo $zipFileContent;
+
+		//Remember when this changeset/admin theme was most recently downloaded.
+		$postId = $changeset->getPostId();
+		if ( $postId ) {
+			update_post_meta($postId, self::LAST_DOWNLOAD_META_KEY, time());
+		}
 		exit;
 	}
 }
@@ -1503,6 +1834,11 @@ class AcChangeset implements \IteratorAggregate, \JsonSerializable, \Countable {
 	private $postId = null;
 	private $name = null;
 	private $lastModified;
+
+	/**
+	 * @var null|AcAdminThemeMetadata
+	 */
+	private $adminThemeMetadata = null;
 
 	private $status = null;
 
@@ -1523,8 +1859,9 @@ class AcChangeset implements \IteratorAggregate, \JsonSerializable, \Countable {
 	#[\ReturnTypeWillChange]
 	public function jsonSerialize() {
 		return [
-			'settings'     => $this->settingValues,
-			'lastModified' => $this->lastModified,
+			'settings'           => $this->settingValues,
+			'lastModified'       => $this->lastModified,
+			'adminThemeMetadata' => $this->adminThemeMetadata,
 		];
 	}
 
@@ -1559,8 +1896,13 @@ class AcChangeset implements \IteratorAggregate, \JsonSerializable, \Countable {
 	 */
 	public static function fromArray($data) {
 		$changeset = new static();
+
 		$changeset->settingValues = $data['settings'];
 		$changeset->lastModified = isset($data['lastModified']) ? intval($data['lastModified']) : null;
+		if ( isset($data['adminThemeMetadata']) ) {
+			$changeset->adminThemeMetadata = AcAdminThemeMetadata::parseArray($data['adminThemeMetadata']);
+		}
+
 		return $changeset;
 	}
 
@@ -1653,6 +1995,37 @@ class AcChangeset implements \IteratorAggregate, \JsonSerializable, \Countable {
 
 	public function setLastModifiedToNow() {
 		$this->lastModified = time();
+	}
+
+	/**
+	 * @param AcAdminThemeMetadata|null $metadata
+	 * @return void
+	 */
+	public function setAdminThemeMetadata($metadata) {
+		$this->adminThemeMetadata = $metadata;
+	}
+
+	/**
+	 * @return \YahnisElsts\AdminMenuEditor\AdminCustomizer\AcAdminThemeMetadata|null
+	 */
+	public function getAdminThemeMetadata() {
+		return $this->adminThemeMetadata;
+	}
+
+	/**
+	 * Create a new changeset with the same settings as this one.
+	 *
+	 * Does NOT save the new changeset.
+	 *
+	 * @param string|null $name
+	 * @return static
+	 */
+	public function duplicate($name = null) {
+		$newChangeset = new static($name);
+		$newChangeset->settingValues = $this->settingValues;
+		$newChangeset->adminThemeMetadata = $this->adminThemeMetadata;
+		$newChangeset->lastModified = $this->lastModified;
+		return $newChangeset;
 	}
 }
 
@@ -1779,7 +2152,7 @@ class AcAdminThemeMetadata implements \JsonSerializable {
 	const ID_PREFIX_HASH_LENGTH = 6;
 
 	public $pluginName = 'Custom Admin Theme';
-	public $pluginSlug = 'custom-admin-theme';
+	public $pluginSlug = '';
 	public $pluginVersion = '1.0';
 	public $pluginUrl = '';
 	public $authorName = '';
@@ -1788,6 +2161,12 @@ class AcAdminThemeMetadata implements \JsonSerializable {
 	public $testedWpVersion = '6.2';
 	public $shortDescription = ' ';
 	public $identifierPrefix = '';
+
+	/**
+	 * @var bool Whether the user has ever confirmed the metadata settings
+	 *           (e.g. by clicking "OK" or "Download" in the metadata editor).
+	 */
+	public $wasEverConfirmed = false;
 
 	/**
 	 * @param string $jsonString
@@ -1820,7 +2199,7 @@ class AcAdminThemeMetadata implements \JsonSerializable {
 
 		$parsers = [
 			'pluginName'        => [__CLASS__, 'parsePluginName'],
-			'pluginSlug'        => 'sanitize_title',
+			'pluginSlug'        => [__CLASS__, 'parsePluginSlug'],
 			'requiredWpVersion' => [__CLASS__, 'parseVersionNumber'],
 			'testedWpVersion'   => [__CLASS__, 'parseVersionNumber'],
 			'pluginVersion'     => [__CLASS__, 'parseVersionNumber'],
@@ -1829,11 +2208,12 @@ class AcAdminThemeMetadata implements \JsonSerializable {
 			'pluginUrl'         => 'esc_url_raw',
 			'shortDescription'  => [__CLASS__, 'parseShortDescription'],
 			'identifierPrefix'  => [__CLASS__, 'parseIdentifierPrefix'],
+			'wasEverConfirmed'  => 'boolval',
 		];
 
 		foreach ($parsers as $key => $parser) {
 			if ( isset($inputArray[$key]) ) {
-				if ( strlen($inputArray[$key]) > self::MAX_FIELD_LENGTH ) {
+				if ( is_string($inputArray[$key]) && (strlen($inputArray[$key]) > self::MAX_FIELD_LENGTH) ) {
 					throw new \InvalidArgumentException(sprintf(
 						'Field "%s" is too long (max %d characters)',
 						$key,
@@ -1846,14 +2226,6 @@ class AcAdminThemeMetadata implements \JsonSerializable {
 					: $inputArray[$key];
 			}
 		}
-
-		//Plugin slug defaults to the plugin name.
-		if ( empty($result->pluginSlug) ) {
-			$result->pluginSlug = sanitize_title($result->pluginName);
-		}
-
-		//Slug should not be longer than, say, 64 characters.
-		$result->pluginSlug = substr($result->pluginSlug, 0, 64);
 
 		//Fallback for the prefix.
 		if ( empty($result->identifierPrefix) ) {
@@ -1965,6 +2337,29 @@ class AcAdminThemeMetadata implements \JsonSerializable {
 		return preg_replace('/[^a-zA-Z0-9_]/', '', $prefix);
 	}
 
+	public function getEffectivePluginSlug() {
+		if ( !empty($this->pluginSlug) ) {
+			return $this->pluginSlug;
+		} else {
+			//Fallback to the plugin name converted to a slug.
+			return self::parsePluginSlug($this->pluginName);
+		}
+	}
+
+	private static function parsePluginSlug($slug) {
+		if ( $slug === null ) {
+			return '';
+		}
+		if ( !is_string($slug) ) {
+			throw new \InvalidArgumentException('Invalid plugin slug');
+		}
+
+		$slug = sanitize_title($slug);
+
+		//Slug should not be longer than, say, 64 characters.
+		return substr($slug, 0, 64);
+	}
+
 	/** @noinspection PhpLanguageLevelInspection */
 	#[\ReturnTypeWillChange]
 	public function jsonSerialize() {
@@ -1979,6 +2374,7 @@ class AcAdminThemeMetadata implements \JsonSerializable {
 			'testedWpVersion'   => $this->testedWpVersion,
 			'shortDescription'  => $this->shortDescription,
 			'identifierPrefix'  => $this->identifierPrefix,
+			'wasEverConfirmed'  => $this->wasEverConfirmed,
 		];
 	}
 }
@@ -2037,7 +2433,7 @@ class AcAdminTheme {
 		$files['metadata.json'] = wp_json_encode($this->meta, JSON_PRETTY_PRINT);
 
 		$tempFileName = get_temp_dir() . uniqid('ac-cat-') . '.zip';
-		$directoryName = $this->meta->pluginSlug;
+		$directoryName = $this->meta->getEffectivePluginSlug();
 
 		$zip = new \ZipArchive();
 		if ( $zip->open($tempFileName, \ZipArchive::CREATE) !== true ) {
@@ -2058,7 +2454,7 @@ class AcAdminTheme {
 	}
 
 	public function getZipFileName() {
-		return $this->meta->pluginSlug . '.zip';
+		return $this->meta->getEffectivePluginSlug() . '.zip';
 	}
 
 	public function setMainStylesheet($css) {

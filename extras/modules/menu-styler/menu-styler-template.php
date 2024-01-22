@@ -15,7 +15,7 @@
 			<div class="ws_dialog_buttons">
 				<?php
 				submit_button(
-					'Save Changes',
+					'OK',
 					'primary',
 					'ws-ame-save-menu-styler-settings',
 					false,

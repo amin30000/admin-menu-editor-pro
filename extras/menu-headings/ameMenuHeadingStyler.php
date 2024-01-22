@@ -16,13 +16,13 @@ class ameMenuHeadingStyler {
 
 		//Put the heading stylesheet before the admin colors stylesheet to make it easier
 		//to override the heading colors for individual items (using the "Color scheme" field).
-		add_action('admin_enqueue_scripts', array($this, 'enqueueHeadingCustomizations'), 5);
-		add_action('wp_ajax_' . self::CSS_AJAX_ACTION, array($this, 'ajaxOutputCss'));
+		add_action('admin_enqueue_scripts', [$this, 'enqueueHeadingCustomizations'], 5);
+		add_action('wp_ajax_' . self::CSS_AJAX_ACTION, [$this, 'ajaxOutputCss']);
 
-		add_action('admin_menu_editor-enqueue_styles-editor', array($this, 'enqueueEditorStyles'));
+		add_action('admin_menu_editor-enqueue_styles-editor', [$this, 'enqueueEditorStyles']);
 
 		if ( !empty($_COOKIE['ame-collapsed-menu-headings']) ) {
-			add_action('in_admin_header', array($this, 'outputRestorationTrigger'));
+			add_action('in_admin_header', [$this, 'outputRestorationTrigger']);
 		}
 	}
 
@@ -56,10 +56,13 @@ class ameMenuHeadingStyler {
 		header('Content-Type: text/css');
 		header('X-Content-Type-Options: nosniff');
 
+		//phpcs:disable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized,WordPress.Security.NonceVerification.Recommended
+		//This is not form input, and the config ID can be treated as opaque. load_custom_menu() will validate it.
 		$configId = null;
-		if ( isset($_GET['ame_config_id']) && !empty($_GET['ame_config_id']) ) {
+		if ( !empty($_GET['ame_config_id']) ) {
 			$configId = (string)($_GET['ame_config_id']);
 		}
+		//phpcs:enable
 		$customMenu = $this->menuEditor->load_custom_menu($configId);
 
 		if ( empty($customMenu) || empty($customMenu['menu_headings']) ) {
@@ -70,9 +73,11 @@ class ameMenuHeadingStyler {
 		$timestamp = (int)ameUtils::get($customMenu, 'menu_headings.modificationTimestamp', time());
 		//Support the If-Modified-Since header.
 		$omitResponseBody = false;
-		if ( isset($_SERVER['HTTP_IF_MODIFIED_SINCE']) && !empty($_SERVER['HTTP_IF_MODIFIED_SINCE']) ) {
+		if ( !empty($_SERVER['HTTP_IF_MODIFIED_SINCE']) ) {
+			//strtotime() will return false if the input is not a valid timestamp.
+			//phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 			$threshold = strtotime((string)$_SERVER['HTTP_IF_MODIFIED_SINCE']);
-			if ( $timestamp <= $threshold ) {
+			if ( ($threshold !== false) && ($timestamp <= $threshold) ) {
 				header('HTTP/1.1 304 Not Modified');
 				$omitResponseBody = true;
 			}
@@ -90,24 +95,24 @@ class ameMenuHeadingStyler {
 		}
 
 		$output = $this->generateCss($customMenu['menu_headings']);
+		//phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- The output is CSS.
 		echo $output;
 		exit;
 	}
 
 	protected function generateCss($settings) {
 		$textColor = null;
-		$backgroundColor = null;
+		if ( ameUtils::get($settings, 'textColorType') === 'custom' ) {
+			$textColor = ameUtils::get($settings, 'textColor');
+		}
 
 		//General heading appearance.
 		$linkStyles = ['cursor' => 'default'];
 		$hoverStyles = ['background-color' => 'transparent'];
 
-		if ( ameUtils::get($settings, 'textColorType') === 'custom' ) {
-			$textColor = ameUtils::get($settings, 'textColor');
-			if ( !empty($textColor) ) {
-				$linkStyles['color'] = $textColor;
-				$hoverStyles['color'] = $textColor;
-			}
+		if ( !empty($textColor) ) {
+			$linkStyles['color'] = $textColor;
+			$hoverStyles['color'] = $textColor;
 		}
 		if ( ameUtils::get($settings, 'backgroundColorType') === 'custom' ) {
 			$backgroundColor = ameUtils::get($settings, 'backgroundColor');
@@ -172,6 +177,7 @@ class ameMenuHeadingStyler {
 		//The icon.
 		$iconStyles = [];
 		$collapsedIconStyles = [];
+		$iconHoverStyles = [];
 		$iconVisibility = ameUtils::get($settings, 'iconVisibility', 'always');
 		if ( $iconVisibility !== 'always' ) {
 			$iconStyles['display'] = 'none';
@@ -184,10 +190,14 @@ class ameMenuHeadingStyler {
 				$paddingStyles['padding-left'] = '9px';
 			}
 		}
+		if ( !empty($textColor) ) {
+			$iconStyles['color'] = $textColor;
+			$iconHoverStyles['color'] = $textColor;
+		}
 
 		$output = [
 			$this->makeCssRule(
-				['& a'],
+				['& > a'],
 				$linkStyles
 			),
 			$this->makeCssRule(
@@ -199,7 +209,15 @@ class ameMenuHeadingStyler {
 				$borderStyles
 			),
 			$this->makeCssRule(
-				['&:hover', '&:active', '&:focus', '& a:hover', '&.menu-top a:active', '&.menu-top a:focus',],
+				[
+					'&:hover',
+					'&:active',
+					'&:focus',
+					'& > a:hover',
+					'&.menu-top > a:active',
+					'&.menu-top > a:focus',
+					'&.opensub > a.menu-top',
+				],
 				$hoverStyles
 			),
 			$this->makeCssRule(
@@ -211,12 +229,20 @@ class ameMenuHeadingStyler {
 				$collapsedIconStyles
 			),
 			$this->makeCssRule(
-				['&.ame-collapsible-heading a'],
+				[
+					'&:hover div.wp-menu-image::before',
+					'& > a:focus div.wp-menu-image::before',
+					'&.opensub div.wp-menu-image::before',
+				],
+				$iconHoverStyles
+			),
+			$this->makeCssRule(
+				['&.ame-collapsible-heading > a'],
 				['cursor' => 'pointer']
 			),
 			//Remove the colored bar from item unless the heading is clickable.
 			$this->makeCssRule(
-				['&:not(.ame-collapsible-heading) a'],
+				['&:not(.ame-collapsible-heading) > a'],
 				['box-shadow' => 'none']
 			),
 		];

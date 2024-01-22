@@ -172,7 +172,7 @@ class Stylesheet {
 
 			$content = sprintf(
 					'/* Cache hit. Last modified on %s */',
-					isset($data['lastModified']) ? gmdate('Y-m-d H:i:s', $data['lastModified']) : 'unknown'
+					isset($data['lastModified']) ? gmdate('Y-m-d H:i:s e', $data['lastModified']) : 'unknown'
 				) . "\n" . $content;
 		} else {
 			$content = $this->generateCss();
@@ -181,7 +181,6 @@ class Stylesheet {
 
 		header('Content-Type: text/css');
 		header('X-Content-Type-Options: nosniff');
-		header('Content-Length: ' . strlen($content));
 
 		//phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- CSS does not need to be HTML-escaped.
 		echo $content;
@@ -272,25 +271,28 @@ class Stylesheet {
 	 * @return int Unix timestamp. Can be 0 if the last modified time is unknown.
 	 */
 	protected function getLastModifiedTimestamp() {
-		//In the preview frame, the "last modified" timestamp does not get updated
-		//when the user changes individual style settings. Instead, let's use
-		//the changeset modification time.
-		$changeset = $this->getActiveAcChangeset();
-		if ( !empty($changeset) ) {
-			$changesetModified = $changeset->getLastModified();
-			if ( !empty($changesetModified) ) {
-				return $changesetModified;
+		$timestamp = 0;
+		if ( $this->lastModifiedCallback !== null ) {
+			$lastModified = call_user_func($this->lastModifiedCallback);
+			if ( is_int($lastModified) ) {
+				$timestamp = $lastModified;
 			}
 		}
 
-		if ( $this->lastModifiedCallback === null ) {
-			return 0;
+		//In the preview frame, we might have a mix of existing settings and settings
+		//that have been modified as part of an AC changeset. Let's use the most recent
+		//timestamp.
+		//The regular "last modified" timestamp doesn't get updated in AC preview when
+		//the user changes individual settings, so we use the changeset modification
+		//time instead.
+		$changeset = $this->getActiveAcChangeset();
+		if ( !empty($changeset) ) {
+			$changesetModified = $changeset->getLastModified();
+			if ( !empty($changesetModified) && ($changesetModified > $timestamp) ) {
+				$timestamp = $changesetModified;
+			}
 		}
 
-		$timestamp = call_user_func($this->lastModifiedCallback);
-		if ( !is_int($timestamp) ) {
-			return 0;
-		}
 		return $timestamp;
 	}
 

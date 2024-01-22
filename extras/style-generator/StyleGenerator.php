@@ -147,6 +147,30 @@ class StyleGenerator {
 	}
 
 	/**
+	 * @param string $variableName
+	 * @return array{0: bool, 1: bool} [usesSettings, hasNonEmptySettings]
+	 */
+	public function checkSettingsUsedByVariable($variableName) {
+		if ( !isset($this->variables[$variableName]) ) {
+			return [false, false]; //This variable does not exist.
+		}
+
+		$usesSettings = false;
+
+		foreach ($this->variables[$variableName] as $value) {
+			if ( !($value instanceof Expression) ) {
+				continue;
+			}
+			list($valueUsesSettings, $valueHasNonEmptySettings) = $value->checkUsedSettingStatus();
+			if ( $valueHasNonEmptySettings ) {
+				return [true, true];
+			}
+			$usesSettings = $usesSettings || $valueUsesSettings;
+		}
+		return [$usesSettings, false];
+	}
+
+	/**
 	 * @param \YahnisElsts\AdminMenuEditor\StyleGenerator\Dsl\Expression[] $inputs
 	 * @return mixed|null
 	 */
@@ -323,6 +347,18 @@ class StyleGenerator {
 				'elseResult' => $elseResult,
 			],
 			[DslFunctions::class, 'runCompare']
+		);
+	}
+
+	public function ifImageSettingContainsImage($imageValue, $thenResult = true, $elseResult = null) {
+		return new FunctionCall(
+			'ifImageSettingContainsImage',
+			[
+				'value'      => $imageValue,
+				'thenResult' => $thenResult,
+				'elseResult' => $elseResult,
+			],
+			[DslFunctions::class, 'runIfImageSettingContainsImage']
 		);
 	}
 

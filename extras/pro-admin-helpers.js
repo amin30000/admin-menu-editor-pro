@@ -84,7 +84,7 @@
     jQuery(function ($) {
         //Menu headings: Handle clicks.
         const $adminMenu = $('#adminmenumain #adminmenu');
-        $adminMenu.find('li.ame-menu-heading-item a').on('click', function () {
+        $adminMenu.find('li.ame-menu-heading-item > a').on('click', function () {
             const $heading = $(this).closest('li');
             const canBeCollapsed = $heading.hasClass('ame-collapsible-heading');
             if (!canBeCollapsed) {
@@ -135,10 +135,26 @@
             baseTextColor = mostCommonColor;
             //We want to override the default menu colors, but not per-item styles.
             const parentSelector = '#adminmenu li.ame-menu-heading-item';
-            let selectors = [':hover', ':active', ':focus', ' a:hover', ' a:active', ' a:focus'].map(function (suffix) {
+            let selectors = [
+                ':hover',
+                ':active',
+                ':focus',
+                ' > a:hover',
+                ' > a:active',
+                ' > a:focus',
+                '.opensub > a.menu-top' //Hovering over a sub-menu item. WP has a separate rule for this.
+            ].map(function (suffix) {
                 return parentSelector + suffix;
             });
-            const $newStyle = $('<style type="text/css">')
+            //Icon hover color.
+            selectors = selectors.concat([
+                ':hover div.wp-menu-image::before',
+                ' > a:focus div.wp-menu-image::before',
+                '.opensub div.wp-menu-image::before'
+            ].map(function (suffix) {
+                return parentSelector + suffix;
+            }));
+            const $newStyle = $('<style>')
                 .text(selectors.join(',\n') + ' { color: ' + baseTextColor + '; }');
             const $adminCssNode = $('link#admin-menu-css').first();
             if ($adminCssNode.length === 1) {

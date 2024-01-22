@@ -322,6 +322,18 @@ export var AmeStyleGenerator;
                 }
             }
             return thenResult;
+        },
+        ifImageSettingContainsImage: function (args) {
+            const thenResult = args.thenResult !== undefined ? args.thenResult : true;
+            const elseResult = args.elseResult !== undefined ? args.elseResult : null;
+            if ((typeof args.value !== 'object') || !args.value) {
+                return elseResult;
+            }
+            const image = args.value;
+            const hasAttachment = !!image.attachmentId;
+            const hasExternalUrl = !!image.externalUrl;
+            const hasImage = hasAttachment || hasExternalUrl;
+            return hasImage ? thenResult : elseResult;
         }
     };
     let Preview;

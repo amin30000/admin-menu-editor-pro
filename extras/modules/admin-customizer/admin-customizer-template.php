@@ -46,7 +46,7 @@ if ( is_rtl() ) {
 }
 $bodyClasses[] = ' locale-' . sanitize_html_class(strtolower(str_replace('_', '-', get_user_locale())));
 
-$pageTitle = 'Admin Customizer';
+$pageTitle = apply_filters('admin_menu_editor-ac_page_title', 'Admin Customizer');
 ?>
 	<title><?php echo esc_html($pageTitle); ?></title>
 <?php
@@ -54,71 +54,81 @@ $pageTitle = 'Admin Customizer';
 print_head_scripts();
 print_admin_styles();
 
+do_action('admin_menu_editor-ac_head');
+
 echo '</head>';
 
 if ( empty($currentChangeset) ) {
 	wp_die('Changeset not defined');
 }
-if ( empty($currentChangeset->getName()) ) {
-	wp_die('Changeset does not have a name');
-}
+
+$defaultButtonsEnabled = apply_filters('admin_menu_editor-ac_default_buttons_enabled', true);
+
 ?>
 	<body class="<?php echo esc_attr(implode(' ', $bodyClasses)); ?>">
 
 	<div id="ame-ac-admin-customizer">
 		<div id="ame-ac-sidebar">
 			<div id="ame-ac-primary-actions">
-				<a id="ame-ac-exit-admin-customizer"
-				   href="<?php echo esc_url($returnUrl); ?>"
-				   data-bind="click: confirmExit"><span class="screen-reader-text">Close</span></a>
-				<span class="spinner"></span>
-				<div id="ame-ac-save-button-wrapper">
-					<?php
-					submit_button(
-						'Save Changes',
-						'primary',
-						'apply-changes',
-						false,
-						[
-							'id'                  => 'ame-ac-apply-changes',
-							'data-default-text'   => 'Save Changes',
-							'data-published-text' => 'Saved',
-							'disabled'            => 'disabled',
-							//Disabled by default, enabled when changes are detected.
-						]
-					);
+				<?php do_action('admin_menu_editor-ac_action_bar_start'); ?>
+				<?php if ( $defaultButtonsEnabled ): ?>
+					<a id="ame-ac-exit-admin-customizer"
+					   href="<?php echo esc_url($returnUrl); ?>"
+					   data-bind="click: confirmExit"><span class="screen-reader-text">Close</span></a>
+				<?php endif; ?>
 
-					echo '<button id="ame-ac-extra-actions-trigger"
+				<span class="spinner"></span>
+
+				<?php do_action('admin_menu_editor-ac_primary_actions'); ?>
+				<?php if ( $defaultButtonsEnabled ): ?>
+					<div id="ame-ac-save-button-wrapper">
+						<?php
+						submit_button(
+							'Save Changes',
+							'primary',
+							'apply-changes',
+							false,
+							[
+								'id'                  => 'ame-ac-apply-changes',
+								'data-default-text'   => 'Save Changes',
+								'data-published-text' => 'Saved',
+								'disabled'            => 'disabled',
+								//Disabled by default, enabled when changes are detected.
+							]
+						);
+
+						echo '<button id="ame-ac-extra-actions-trigger"
 					        class="button button-primary dashicons dashicons-admin-generic"
 					        disabled
 					        data-bind="click: toggleExtraActionMenu.bind($root), enable: true"></button>'
-					?>
-				</div>
+						?>
+					</div>
 
-				<ul id="ame-ac-extra-actions-menu" class="ame-ac-menu" style="display: none">
-					<li class="ame-ac-menu-item ame-ac-download-theme-action"
-					    data-bind="click: actionOpenDownloadDialog.bind($root)">
-						<div>Download as admin theme...</div>
-					</li>
-					<li class="ame-ac-menu-item ame-ac-import-theme-action"
-					    data-bind="click: actionOpenImportDialog.bind($root)">
-						<div>
-							<label for="ame-ac-import-admin-theme-file">Import settings from admin theme...</label>
-						</div>
-					</li>
-					<li class="ame-ac-menu-item ame-ac-menu-separator">
-						<div></div>
-					</li>
-					<li class="ame-ac-menu-item ame-ac-menu-item-delete ame-ac-discard-changes-action"
-					    data-bind="click: actionDiscardChanges.bind($root)">
-						<div>
-							<span class="dashicons dashicons-trash"></span>
-							Discard changes
-						</div>
-					</li>
-				</ul>
-				<input type="file" id="ame-ac-import-admin-theme-file" class="ame-ac-visually-hidden"
-				       data-bind="event: {'change': handleImportFileSelection.bind($root)}">
+					<ul id="ame-ac-extra-actions-menu" class="ame-ac-menu" style="display: none">
+						<li class="ame-ac-menu-item ame-ac-download-theme-action"
+						    data-bind="click: actionOpenDownloadDialog.bind($root)">
+							<div>Download as admin theme...</div>
+						</li>
+						<li class="ame-ac-menu-item ame-ac-import-theme-action"
+						    data-bind="click: actionOpenImportDialog.bind($root)">
+							<div>
+								<label for="ame-ac-import-admin-theme-file">Import settings from admin theme...</label>
+							</div>
+						</li>
+						<li class="ame-ac-menu-item ame-ac-menu-separator">
+							<div></div>
+						</li>
+						<li class="ame-ac-menu-item ame-ac-menu-item-delete ame-ac-discard-changes-action"
+						    data-bind="click: actionDiscardChanges.bind($root)">
+							<div>
+								<span class="dashicons dashicons-trash"></span>
+								Discard changes
+							</div>
+						</li>
+					</ul>
+					<input type="file" id="ame-ac-import-admin-theme-file" class="ame-ac-visually-hidden"
+					       data-bind="event: {'change': handleImportFileSelection.bind($root)}">
+				<?php endif; ?>
 			</div>
 			<div id="ame-ac-sidebar-info">
 				<div id="ame-ac-global-notification-area"></div>
@@ -166,6 +176,7 @@ if ( empty($currentChangeset->getName()) ) {
 				</div>
 				<div id="ame-ac-sidebar-blocker-overlay"></div>
 			</div>
+			<?php do_action('admin_menu_editor-ac_sidebar_footer'); ?>
 		</div>
 		<div id="ame-ac-preview-container">
 			<iframe id="ame-ac-preview" name="ame-ac-preview-frame" src="about:blank">
@@ -187,14 +198,13 @@ if ( empty($currentChangeset->getName()) ) {
 			     title="Generate admin theme"
 			     style="display: none;" class="ame-ac-dialog">
 
-				<div class="ame-ac-dialog-help">
+				<div class="ame-ac-dialog-help" data-bind="visible: downloadThemeDialog.helpContainerVisible">
 					<div data-bind="visible: downloadThemeDialog.helpVisible">
 						This feature generates an
-						<abbr title="An admin theme is a plugin that changes the appearance of the admin dashboard">
-							admin theme
-						</abbr>
-						from the current settings. The result is a standalone plugin that you can
-						use without Admin Menu Editor Pro. The plugin:
+						<abbr title="An admin theme is a plugin that changes the appearance of the admin dashboard">admin
+							theme</abbr> from the current settings.
+						<span data-bind="text: downloadThemeDialog.adminThemeTexts.standalonePluginNote"></span>
+						The plugin:
 						<ul>
 							<li>Includes visual customizations: colors, fonts, borders, etc.</li>
 							<li>Doesn't include role settings, menu properties, custom widgets, etc.</li>

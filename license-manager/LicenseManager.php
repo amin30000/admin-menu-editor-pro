@@ -4,7 +4,7 @@ require dirname(__FILE__) . '/ProductLicense.php';
 require dirname(__FILE__) . '/LicenseServer.php';
 require dirname(__FILE__) . '/BasicPluginLicensingUi.php';
 
-use YahnisElsts\PluginUpdateChecker\v5p0\Plugin;
+use YahnisElsts\PluginUpdateChecker\v5p2\Plugin;
 
 class Wslm_LicenseManagerClient {
 	const LICENSE_SCOPE_SITE = 'site';

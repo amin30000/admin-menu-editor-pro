@@ -78,6 +78,8 @@ namespace AmeAcCommunicator {
 
 		private isConnectionBroken: boolean = false;
 
+		private lastSentHandshakeRequest: HandshakeRequest | null = null;
+
 		constructor(
 			protected readonly name: string,
 			protected readonly target: Window,
@@ -134,13 +136,15 @@ namespace AmeAcCommunicator {
 			//Send the handshake request to every allowed target origin.
 			for (const origin of this.allowedTargetOrigins) {
 				this.log(`Sending handshake request to ${origin}`);
-				this.target.postMessage(this.createHandshakeRequest(), origin);
+				this.lastSentHandshakeRequest = this.createHandshakeRequest();
+				this.target.postMessage(this.lastSentHandshakeRequest, origin);
 			}
 
 			//Give up if the other window doesn't respond in time.
 			if (connectionTimeout > 0) {
 				setTimeout(() => {
 					if (this.deferred.state() === 'pending') {
+						this.lastSentHandshakeRequest = null;
 						this.deferred.reject();
 					}
 				}, connectionTimeout);
@@ -159,30 +163,57 @@ namespace AmeAcCommunicator {
 			}
 			this.log(`Received message from ${origin}: ${JSON.stringify(message)}`);
 
-			//Until the handshake is completed, process only handshake messages.
-			if (!this.handshakeDone) {
-				//We'll send a handshake request to the other window and wait
-				//for a response. Alternatively, the other window can send
-				//a handshake request to us.
-				if (isHandshakeResponse(message)) {
-					if (this.validateHandshakeResponse(message)) {
-						this.completeHandshake(message, origin);
-					} else {
-						this.deferred.reject();
-					}
-				} else if (isHandshakeRequest(message)) {
-					if (this.validateHandshakeRequest(message)) {
-						this.send(this.createHandshakeResponse());
-						this.completeHandshake(message, origin);
+			//We'll send a handshake request to the other window and wait
+			//for a response. Alternatively, the other window can send
+			//a handshake request to us.
+			if (isHandshakeResponse(message)) {
+				if (this.validateHandshakeResponse(message)) {
+					this.completeHandshake(message, origin);
+				} else {
+					this.log('Received an invalid handshake response.');
+					if (this.lastSentHandshakeRequest) {
+						this.log('Aborting handshake attempt ' + this.lastSentHandshakeRequest.handshakeRequestId);
+						this.lastSentHandshakeRequest = null;
+						if (this.deferred.state() === 'pending') {
+							this.deferred.reject();
+						}
 					}
 				}
-				return;
-			}
-
-			if (isRpcRequest(message)) {
-				this.handleRpcRequest(message);
-			} else if (isRpcResponse(message)) {
-				this.handleRpcResponse(message);
+			} else if (isHandshakeRequest(message)) {
+				/*
+				 * Note: It's allowed to re-connect after the handshake is already done
+				 * as long as the origin is the same. This is useful in situations where
+				 * a child establishes a connection before the "load" event is fired and
+				 * then the parent re-establishes it in a "load" event handler.
+				 *
+				 * We can't simply remove the "load" event handler because the parent does
+				 * not necessarily know if the page that loaded is the same as the page
+				 * that created the connection.
+				 */
+				if (this.validateHandshakeRequest(message)) {
+					if (this.handshakeDone && (this.connectedOrigin !== origin)) {
+						this.log(
+							'Received a handshake request from a different origin while already connected.'
+							+ ' Ignoring the request.'
+						);
+						return;
+					}
+					this.send(this.createHandshakeResponse(message));
+					this.completeHandshake(message, origin);
+				} else {
+					this.log('Handshake request is invalid and will be ignored.');
+				}
+			} else {
+				//Only process general RPC messages after the handshake is done.
+				if (this.handshakeDone) {
+					if (isRpcRequest(message)) {
+						this.handleRpcRequest(message);
+					} else if (isRpcResponse(message)) {
+						this.handleRpcResponse(message);
+					}
+				} else {
+					this.log('Ignoring message because the handshake is not completed yet.');
+				}
 			}
 		}
 
@@ -255,6 +286,7 @@ namespace AmeAcCommunicator {
 		disconnect() {
 			//Do nothing if already disconnected.
 			if (this.isConnectionBroken) {
+				this.log('Notice: Cannot disconnect because the connection is already broken.');
 				return;
 			}
 
@@ -278,6 +310,7 @@ namespace AmeAcCommunicator {
 					request.reject('Connection explicitly closed.');
 				}
 			});
+			this.log('Disconnected.');
 		}
 
 		addRpcMethod(methodName: string, method: (...args: any[]) => any): void {
@@ -289,17 +322,19 @@ namespace AmeAcCommunicator {
 				'handshake-request',
 				{
 					'myOrigin': this.getMyOrigin(),
+					'handshakeRequestId': Connection.getRandomString(20),
 				}
 			);
 		}
 
-		protected createHandshakeResponse(): HandshakeResponse {
+		protected createHandshakeResponse(incomingRequest: HandshakeRequest): HandshakeResponse {
 			return this.createMessage(
 				'handshake-response',
 				{
 					'success': true,
 					'myUrl': this.myWindow.location.href,
 					'myOrigin': this.getMyOrigin(),
+					'handshakeRequestId': incomingRequest.handshakeRequestId,
 				}
 			);
 		}
@@ -342,7 +377,12 @@ namespace AmeAcCommunicator {
 		}
 
 		protected validateHandshakeResponse(response: HandshakeResponse): boolean {
-			return response.format === 'AmeAcCommunicator1' && response.tag === 'handshake-response';
+			return (
+				(response.format === 'AmeAcCommunicator1')
+				&& (response.tag === 'handshake-response')
+				&& (this.lastSentHandshakeRequest !== null)
+				&& (response.handshakeRequestId === this.lastSentHandshakeRequest.handshakeRequestId)
+			);
 		}
 
 		protected completeHandshake(message: HandshakeResponse | HandshakeRequest, origin: string): void {
@@ -355,7 +395,10 @@ namespace AmeAcCommunicator {
 				}
 			}
 			this.handshakeDone = true;
-			this.deferred.resolve(this);
+			this.lastSentHandshakeRequest = null;
+			if (this.deferred.state() === 'pending') {
+				this.deferred.resolve(this);
+			}
 
 			this.log('Handshake complete. Connected origin: ' + this.connectedOrigin);
 		}
@@ -517,12 +560,14 @@ namespace AmeAcCommunicator {
 
 	interface HandshakeRequest extends MessageData<'handshake-request'> {
 		myOrigin: string | null;
+		handshakeRequestId: string;
 	}
 
 	interface HandshakeResponse extends MessageData<'handshake-response'> {
 		success: boolean;
 		myUrl: string;
 		myOrigin: string | null;
+		handshakeRequestId: string;
 	}
 
 	interface RpcRequest extends MessageData<'rpc-request'> {

@@ -135,6 +135,9 @@ class AmeMenuHeadingSettingsScreen {
         this.settings.modificationTimestamp(Math.round(Date.now() / 1000));
         this.currentSavedSettings = this.settings.getAll();
         this.closeDialog();
+        if (jQuery) {
+            jQuery(document).trigger('adminMenuEditor:menuConfigChanged');
+        }
     }
     onCancel() {
         this.discardChanges();

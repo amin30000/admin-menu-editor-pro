@@ -26,6 +26,11 @@ class SettingReference extends Expression {
 		}
 	}
 
+	public function checkUsedSettingStatus() {
+		$isNonEmpty = ($this->setting->getValue('') !== '');
+		return [true, $isNonEmpty];
+	}
+
 	/** @noinspection PhpLanguageLevelInspection */
 	#[\ReturnTypeWillChange]
 	public function jsonSerialize() {

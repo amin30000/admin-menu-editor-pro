@@ -11,11 +11,20 @@ class AmeBaseKnockoutDialog {
         this.options = {
             buttons: []
         };
-        const confirmButtonLabel = this.getConfirmButtonLabel();
+        this.firstInitDone = false;
+        this.confirmButtonId = AmeBaseKnockoutDialog.autoIdPrefix + 'confirm-' + AmeBaseKnockoutDialog.autoIdCounter++;
+    }
+    onBeforeInit() {
+        if (this.firstInitDone) {
+            return;
+        }
+        this.firstInitDone = true;
+        const confirmButtonLabel = this.confirmButtonLabel();
         if (confirmButtonLabel !== null) {
             this.options.buttons.push({
                 text: confirmButtonLabel,
                 'class': 'button button-primary ame-dialog-confirm-button',
+                id: this.confirmButtonId,
                 click: this.handleConfirmButtonClick.bind(this),
                 disabled: true //Should be enabled by using the isConfirmButtonEnabled observable.
             });
@@ -40,10 +49,9 @@ class AmeBaseKnockoutDialog {
             event.preventDefault();
         }
     }
-    getConfirmButtonLabel() {
-        return null;
-    }
 }
+AmeBaseKnockoutDialog.autoIdPrefix = 'ws-ame-dialogAuto-';
+AmeBaseKnockoutDialog.autoIdCounter = 0;
 /*
  * jQuery Dialog binding for Knockout.
  *
@@ -60,6 +68,9 @@ ko.bindingHandlers.ameDialog = {
     init: function (element, valueAccessor) {
         const dialog = ko.utils.unwrapObservable(valueAccessor());
         const _ = wsAmeLodash;
+        if (dialog.onBeforeInit) {
+            dialog.onBeforeInit();
+        }
         let options = dialog.options ? dialog.options : {};
         if (!dialog.hasOwnProperty('isOpen')) {
             dialog.isOpen = ko.observable(false);
@@ -110,6 +121,14 @@ ko.bindingHandlers.ameDialog = {
             dialog.title.subscribe(function (newTitle) {
                 jQuery(element).dialog('option', 'title', newTitle);
             });
+            if (dialog.confirmButtonId && dialog.confirmButtonLabel) {
+                dialog.confirmButtonLabel.subscribe(function (newLabel) {
+                    if (newLabel === null) {
+                        return;
+                    }
+                    jQuery('#' + dialog.confirmButtonId).button('option', 'label', newLabel);
+                });
+            }
             if (ko.utils.unwrapObservable(dialog.isOpen)) {
                 jQuery(element).dialog('open');
             }
@@ -158,8 +177,8 @@ ko.bindingHandlers.ameOpenDialog = {
  * You can apply it to any element inside a dialog, or the dialog itself.
  *
  * Usage:
- * <div data-bind="ameDialogButtonEnabled: { selector: '.my-button', enabled: anObservable }">...</div>
- * <div data-bind="ameDialogButtonEnabled: justAnObservable">...</div>
+ * <div data-bind="ameEnableDialogButton: { selector: '.my-button', enabled: anObservable }">...</div>
+ * <div data-bind="ameEnableDialogButton: justAnObservable">...</div>
  *
  * If you omit the selector, the binding will enable/disable the first button that has the "button-primary" CSS class.
  */

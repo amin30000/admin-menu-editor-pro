@@ -10,13 +10,14 @@ class AmeAcSectionLink extends KoContainerViewModel {
             throw new Error('The uiElement parameter is required for AmeAcSectionLink');
         }
         this.targetElementId = AmeAcSection.getSectionElementId(this.uiElement);
+        this.elementId = AmeAcSection.getSectionLinkElementId(this.uiElement);
     }
     getExpectedUiElementType() {
         return Section;
     }
 }
 export default createComponentConfig(AmeAcSectionLink, `
-	<li class="ame-ac-section-link" data-bind="attr: {'data-target-id' : targetElementId}">
+	<li class="ame-ac-section-link" data-bind="attr: {'data-target-id' : targetElementId, 'id': elementId}">
 		<h3 class="ame-ac-section-title" data-bind="text: title"></h3>
 	</li>
 `);

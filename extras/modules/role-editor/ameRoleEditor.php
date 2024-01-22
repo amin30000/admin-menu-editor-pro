@@ -2,6 +2,9 @@
 /** @noinspection PhpComposerExtensionStubsInspection, SqlResolve */
 
 /** @noinspection PhpUnused Module is loaded dynamically. */
+
+use YahnisElsts\AdminMenuEditor\AdminCustomizer\AmeAdminCustomizer;
+
 class ameRoleEditor extends amePersistentProModule {
 	const REQUIRED_CAPABILITY = 'edit_users';
 	const CORE_COMPONENT_ID = ':wordpress:';
@@ -320,6 +323,13 @@ class ameRoleEditor extends amePersistentProModule {
 			//is included in a default group.
 			if ($name === 'attachment') {
 				$isIncluded = false;
+			}
+
+			//Skip AC changesets.
+			if ( class_exists(AmeAdminCustomizer::class) ) {
+				if ( $name === AmeAdminCustomizer::CHANGESET_POST_TYPE ) {
+					$isIncluded = false;
+				}
 			}
 
 			if (!$isIncluded) {

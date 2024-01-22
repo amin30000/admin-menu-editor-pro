@@ -107,3 +107,19 @@
 		}
 	}
 }
+
+//Display module menu items like "Easy Hide" as subordinate to the main "Menu Editor Pro"
+//menu item. This is only a visual effect.
+#adminmenu {
+	li.ws-ame-primary-am-item + li.ws-ame-secondary-am-item,
+	li.ws-ame-secondary-am-item + li.ws-ame-secondary-am-item {
+		//Based on some experimentation, a simple thick dash looks better than
+		//a T-shaped connector.
+		a:first-of-type:before {
+			content: "– ";
+			font-weight: 800;
+			vertical-align: top;
+			line-height: 1;
+		}
+	}
+}

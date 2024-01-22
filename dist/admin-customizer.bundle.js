@@ -4150,6 +4150,8 @@ var AmeAdminCustomizer;
             this.sentSettings = {};
             this.currentChangesetRequest = null;
             this.saveTriggerTimeoutId = null;
+            this.underlyingMetadata = ko.observable(null);
+            this.metadataHasChanged = ko.observable(false);
             this.exclusiveOperation = ko.observable(false);
             const self = this;
             this.currentChangeset = ko.observable(new Changeset(changesetName, changesetItemCount, changesetStatus));
@@ -4157,16 +4159,44 @@ var AmeAdminCustomizer;
                 var _a;
                 return ((_a = self.currentChangeset()) === null || _a === void 0 ? void 0 : _a.name()) || '';
             });
+            this.adminThemeMetadata = ko.computed({
+                read: () => this.underlyingMetadata(),
+                write: (newValue) => {
+                    const oldValue = this.underlyingMetadata.peek();
+                    if (!_.isEqual(newValue, oldValue)) {
+                        this.underlyingMetadata(newValue);
+                        this.metadataHasChanged(true);
+                    }
+                }
+            });
             //Automatically save the changeset when any settings change.
             const totalChangeCount = ko.pureComputed(() => {
                 const changeset = self.currentChangeset();
                 return (changeset ? changeset.currentSessionChanges() : 0);
             });
-            totalChangeCount.subscribe(_.debounce((counter) => {
-                if (counter > 0) {
+            const debouncedSaveTrigger = _.debounce(() => {
+                //Only save if there are changes. This may look like a duplicate check,
+                //but it's not: the totalChangeCount() may change between the time
+                //the debounced function is called and the time this code is executed.
+                //
+                //Also save if the metadata has changed, but only if the changeset
+                //is not empty. Saving a changeset with only metadata is not useful.
+                if ((totalChangeCount() > 0)
+                    || (this.metadataHasChanged() && this.currentChangeset().isNonEmpty())) {
                     self.queueChangesetUpdate();
                 }
-            }, 3000, { leading: true, trailing: true }));
+            }, 3000, { leading: true, trailing: true });
+            totalChangeCount.subscribe((counter) => {
+                if (counter > 0) {
+                    debouncedSaveTrigger();
+                }
+            });
+            //Also save when theme metadata changes.
+            this.metadataHasChanged.subscribe((hasChanged) => {
+                if (hasChanged) {
+                    debouncedSaveTrigger();
+                }
+            });
             this.isExclusiveOperationInProgress = ko.pureComputed(() => {
                 return self.exclusiveOperation();
             });
@@ -4212,7 +4242,7 @@ var AmeAdminCustomizer;
         saveChangeset(status = null) {
             var _a;
             //Do nothing if there are no changes.
-            if (_.isEmpty(this.pendingSettings) && (status === null)) {
+            if (_.isEmpty(this.pendingSettings) && (status === null) && !this.metadataHasChanged()) {
                 return $.Deferred().reject(new Error('There are no changes to save.')).promise();
             }
             if (this.isExclusiveOperationInProgress()) {
@@ -4232,7 +4262,7 @@ var AmeAdminCustomizer;
             const requestData = {
                 action: 'ws_ame_ac_save_changeset',
                 _ajax_nonce: this.saveChangesetNonce,
-                changeset: (_a = savedChangeset === null || savedChangeset === void 0 ? void 0 : savedChangeset.name) !== null && _a !== void 0 ? _a : '',
+                changeset: (_a = (savedChangeset === null || savedChangeset === void 0 ? void 0 : savedChangeset.name())) !== null && _a !== void 0 ? _a : '',
                 modified: JSON.stringify(modifiedSettings),
             };
             if (status !== null) {
@@ -4242,6 +4272,13 @@ var AmeAdminCustomizer;
             if (!(savedChangeset === null || savedChangeset === void 0 ? void 0 : savedChangeset.hasName())) {
                 requestData['createNew'] = 1;
             }
+            //Also send the metadata if it has changed.
+            const metadataWasChanged = this.metadataHasChanged();
+            if (metadataWasChanged) {
+                const metadata = this.adminThemeMetadata();
+                requestData['adminThemeMetadata'] = JSON.stringify(metadata);
+            }
+            this.metadataHasChanged(false);
             const request = $.ajax({
                 url: this.ajaxUrl,
                 method: 'POST',
@@ -4281,9 +4318,10 @@ var AmeAdminCustomizer;
                 if (!savedChangeset) {
                     return;
                 }
-                //Store the returned changeset name in case a new changeset was created.
-                if (!savedChangeset.hasName()) {
-                    const newName = _.get(serverResponse, ['data', 'changeset']);
+                //Store the returned changeset name in case a new changeset was created
+                //or an existing changeset was forked due to permissions.
+                const newName = _.get(serverResponse, ['data', 'changeset']);
+                if (!savedChangeset.hasName() || (newName !== savedChangeset.name())) {
                     if (typeof newName === 'string') {
                         savedChangeset.name(newName);
                     }
@@ -4384,7 +4422,7 @@ var AmeAdminCustomizer;
         /**
          * Get any unsaved setting changes.
          *
-         * @returns An object mapping setting IDs to their modified values.
+         * @returns Object An object mapping setting IDs to their modified values.
          */
         get unsavedChanges() {
             //Include both pending settings and sent settings. Sent settings
@@ -4442,6 +4480,10 @@ var AmeAdminCustomizer;
             });
             return request;
         }
+        addInitialThemeMetadata(metadata) {
+            this.underlyingMetadata(metadata);
+            this.metadataHasChanged(false);
+        }
     }
     class Changeset {
         constructor(name = '', knownItemCount = 0, initialStatus = '') {
@@ -4461,6 +4503,15 @@ var AmeAdminCustomizer;
             this.fixedContentStatuses = { 'publish': true, 'trash': true, 'future': true };
             this.wasPublished = ko.observable(false);
             this.name = ko.observable(name);
+            this.name.subscribe((newName) => {
+                //In theory, the type system should ensure that the name is always a string,
+                //but that only works on the TS side. I've previously run into a bug where
+                //a null value was sent from the server. Let's add a check here to make it
+                //easier to spot bugs like that in the future.
+                if ((typeof newName !== 'string')) {
+                    throw new Error('Changeset name must always be a string, found ' + (typeof newName));
+                }
+            });
             this.knownItemCount = ko.observable(knownItemCount);
             this.status = ko.observable(initialStatus !== null && initialStatus !== void 0 ? initialStatus : '');
         }
@@ -4475,6 +4526,7 @@ var AmeAdminCustomizer;
             return (this.currentSessionChanges() > 0) || (this.knownItemCount() > 0);
         }
     }
+    const TemporaryChangesetName = 'temporary000'; //Note: Must match the value used in PHP.
     //region Admin theme
     const UrlOrEmpty = _zod_lib_index_js__WEBPACK_IMPORTED_MODULE_11__["default"].union([
         _zod_lib_index_js__WEBPACK_IMPORTED_MODULE_11__["default"].string().url().max(1000),
@@ -4496,6 +4548,7 @@ var AmeAdminCustomizer;
         authorUrl: UrlOrEmpty.optional(),
         requiredWpVersion: _zod_lib_index_js__WEBPACK_IMPORTED_MODULE_11__["default"].string().max(30).default('4.7').optional(),
         testedWpVersion: _zod_lib_index_js__WEBPACK_IMPORTED_MODULE_11__["default"].string().max(30).optional(),
+        wasEverConfirmed: _zod_lib_index_js__WEBPACK_IMPORTED_MODULE_11__["default"].boolean().default(false).optional(),
     });
     const AdminThemeSettings = _zod_lib_index_js__WEBPACK_IMPORTED_MODULE_11__["default"].record(
     //Key type
@@ -4547,7 +4600,7 @@ var AmeAdminCustomizer;
     }
     class ObservableThemeMetadata {
         constructor(metadata) {
-            var _a, _b, _c, _d, _e, _f, _g, _h;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
             this.pluginName = observableWithZodValidation(metadata.pluginName, AdminThemeMetadata.shape.pluginName);
             this.shortDescription = observableWithZodValidation(metadata.shortDescription, AdminThemeMetadata.shape.shortDescription);
             this.pluginSlug = observableWithZodValidation((_a = metadata.pluginSlug) !== null && _a !== void 0 ? _a : '', AdminThemeMetadata.shape.pluginSlug);
@@ -4558,6 +4611,7 @@ var AmeAdminCustomizer;
             this.authorUrl = observableWithZodValidation((_f = metadata.authorUrl) !== null && _f !== void 0 ? _f : '', AdminThemeMetadata.shape.authorUrl);
             this.requiredWpVersion = observableWithZodValidation((_g = metadata.requiredWpVersion) !== null && _g !== void 0 ? _g : '', AdminThemeMetadata.shape.requiredWpVersion);
             this.testedWpVersion = observableWithZodValidation((_h = metadata.testedWpVersion) !== null && _h !== void 0 ? _h : '', AdminThemeMetadata.shape.testedWpVersion);
+            this.wasEverConfirmed = observableWithZodValidation((_j = metadata.wasEverConfirmed) !== null && _j !== void 0 ? _j : false, AdminThemeMetadata.shape.wasEverConfirmed);
         }
         toObject() {
             return {
@@ -4571,6 +4625,7 @@ var AmeAdminCustomizer;
                 authorUrl: this.authorUrl(),
                 requiredWpVersion: this.requiredWpVersion(),
                 testedWpVersion: this.testedWpVersion(),
+                wasEverConfirmed: this.wasEverConfirmed()
             };
         }
         isValid() {
@@ -4584,15 +4639,23 @@ var AmeAdminCustomizer;
                 && this.authorName.ameIsValid()
                 && this.authorUrl.ameIsValid()
                 && this.requiredWpVersion.ameIsValid()
-                && this.testedWpVersion.ameIsValid();
+                && this.testedWpVersion.ameIsValid()
+                && this.wasEverConfirmed.ameIsValid();
         }
     }
+    let MetadataDialogMode;
+    (function (MetadataDialogMode) {
+        MetadataDialogMode[MetadataDialogMode["Download"] = 0] = "Download";
+        MetadataDialogMode[MetadataDialogMode["Edit"] = 1] = "Edit";
+    })(MetadataDialogMode || (MetadataDialogMode = {}));
     class DownloadThemeDialog extends AmeBaseKnockoutDialog {
-        constructor(getChangesetName, savePendingChangesetData) {
+        constructor(getChangesetName, savePendingChangesetData, metadataObservable, customAdminThemeTexts) {
             super();
             this.getChangesetName = getChangesetName;
             this.savePendingChangesetData = savePendingChangesetData;
+            this.metadataObservable = metadataObservable;
             this.isOperationInProgress = ko.observable(false);
+            this.mode = ko.observable(MetadataDialogMode.Download);
             this.autoCancelButton = true;
             this.advancedOptionsVisible = ko.observable(false);
             this.helpVisible = ko.observable(false);
@@ -4602,11 +4665,21 @@ var AmeAdminCustomizer;
             this.cleanupCurrentDownload = () => {
             };
             this.options.minWidth = 400;
-            this.meta = ko.observable(new ObservableThemeMetadata(AdminThemeMetadata.parse({
-                pluginName: 'Custom Admin Theme',
-                shortDescription: 'A custom admin theme generated using the Admin Menu Editor Pro plugin.',
-                pluginVersion: '1.0',
-            })));
+            this.adminThemeTexts = Object.assign({
+                generatorCreditPhrase: 'generated using the Admin Menu Editor Pro plugin.',
+                standalonePluginNote: 'The result is a standalone plugin that you can use without Admin Menu Editor Pro.',
+            }, customAdminThemeTexts);
+            let initialMetadata = metadataObservable();
+            if (initialMetadata === null) {
+                initialMetadata = this.getSampleMetadata();
+            }
+            this.meta = ko.observable(new ObservableThemeMetadata(initialMetadata));
+            this.confirmButtonLabel = ko.computed(() => {
+                if (this.mode() === MetadataDialogMode.Download) {
+                    return 'Download Admin Theme';
+                }
+                return 'OK';
+            });
             this.isConfirmButtonEnabled = ko.computed(() => {
                 if (this.isOperationInProgress()) {
                     return false;
@@ -4626,9 +4699,32 @@ var AmeAdminCustomizer;
             this.helpToggleLabel = ko.pureComputed(() => {
                 return this.helpVisible() ? 'Hide info' : 'How it works';
             });
+            //Hide the help container in download mode.
+            this.helpContainerVisible = ko.pureComputed(() => {
+                return this.mode() === MetadataDialogMode.Download;
+            });
+            this.mode.subscribe((newMode) => {
+                if (newMode === MetadataDialogMode.Download) {
+                    this.title('Generate admin theme');
+                }
+                else if (newMode === MetadataDialogMode.Edit) {
+                    this.title('Edit admin theme properties');
+                }
+            });
         }
-        getConfirmButtonLabel() {
-            return 'Download Admin Theme';
+        getSampleMetadata() {
+            return AdminThemeMetadata.parse({
+                pluginName: 'Custom Admin Theme',
+                shortDescription: 'A custom admin theme ' + this.adminThemeTexts.generatorCreditPhrase,
+                pluginVersion: '1.0',
+            });
+        }
+        onOpen(event, ui) {
+            let latestMetadata = this.metadataObservable();
+            if (latestMetadata === null) {
+                latestMetadata = this.getSampleMetadata();
+            }
+            this.meta(new ObservableThemeMetadata(latestMetadata));
         }
         toggleAdvancedOptions() {
             this.advancedOptionsVisible(!this.advancedOptionsVisible());
@@ -4637,12 +4733,6 @@ var AmeAdminCustomizer;
             this.helpVisible(!this.helpVisible());
         }
         onConfirm(event) {
-            //Sanity checks.
-            const changesetName = this.getChangesetName();
-            if (changesetName === '') {
-                alert('Error: The changeset has not been saved yet (name is empty).');
-                return;
-            }
             if (!this.meta().isValid()) {
                 //This should never happen because the confirm button is disabled
                 //when the metadata is invalid.
@@ -4650,6 +4740,35 @@ var AmeAdminCustomizer;
                 return;
             }
             const metadata = this.meta().toObject();
+            metadata.wasEverConfirmed = true;
+            this.metadataObservable(metadata);
+            if (this.mode() === MetadataDialogMode.Edit) {
+                //That's all we need to do in edit mode.
+                this.isOpen(false);
+                return;
+            }
+            this.triggerDownloadWithErrorReporting(metadata);
+        }
+        triggerDownloadWithErrorReporting(metadata) {
+            if (this.isOperationInProgress()) {
+                alert('Error: Another operation is already in progress.');
+                return;
+            }
+            this.triggerDownload(metadata)
+                .fail((error) => {
+                if (error !== '') {
+                    alert('Error: ' + error);
+                }
+            });
+        }
+        triggerDownload(metadata) {
+            const deferred = $.Deferred();
+            //Sanity checks.
+            //Download mode still requires a saved changeset.
+            const changesetName = this.getChangesetName();
+            if (changesetName === '') {
+                return deferred.reject('The changeset has not been saved yet (name is empty).').promise();
+            }
             this.isOperationInProgress(true);
             const $form = $('#ame-ac-theme-download-request-form');
             const $frame = $('#ame-ac-theme-download-frame');
@@ -4675,8 +4794,8 @@ var AmeAdminCustomizer;
                 }
             };
             const timeoutTimer = setTimeout(() => {
+                deferred.reject('The download operation timed out.');
                 cleanup();
-                alert('Error: The download operation timed out.');
             }, requestTimeoutMs);
             this.savePendingChangesetData().then(() => {
                 if (isCancelledOrDone) {
@@ -4690,7 +4809,7 @@ var AmeAdminCustomizer;
                 const cookieName = ('ameAcFileDownload_'
                     + new Date().getTime()
                     + '_'
-                    + Math.round(Math.random() * 10000) //No dots allowed these cookie names.
+                    + Math.round(Math.random() * 10000) //No dots allowed in these cookie names.
                 );
                 this.downloadCookieName(cookieName);
                 //Clear the frame to prevent the old response from being read.
@@ -4711,10 +4830,12 @@ var AmeAdminCustomizer;
                         $.removeCookie(cookieName);
                         //Close the dialog when the download starts.
                         this.isOpen(false);
+                        deferred.resolve();
                         return;
                     }
                     if ((new Date()).getTime() - requestStartTime > requestTimeoutMs) {
                         cleanup();
+                        deferred.reject('The download operation timed out.');
                     }
                 }, 1000);
                 $frame.on('load.ameAcDownloadAdminTheme', () => {
@@ -4723,7 +4844,7 @@ var AmeAdminCustomizer;
                     const response = JSON.parse(responseText);
                     cleanup();
                     if ((response === null) || (typeof response !== 'object')) {
-                        alert('Error: Received an invalid response from the server.');
+                        deferred.reject('Received an invalid response from the server.');
                     }
                     else {
                         if (!response.success) {
@@ -4734,22 +4855,26 @@ var AmeAdminCustomizer;
                             else {
                                 errorMessage = 'An unknown error occurred on the server.';
                             }
-                            alert(errorMessage);
+                            deferred.reject(errorMessage);
                         }
                         else {
                             //This should never happen in practice.
-                            alert('Error: The server did not start the download correctly.');
+                            deferred.reject('The server did not start the download correctly.');
                         }
                     }
                 });
                 $form.trigger('submit');
             }, () => {
                 if (isCancelledOrDone) {
+                    if (deferred.state() === 'pending') {
+                        deferred.reject(''); //No error message; the user probably cancelled the operation.
+                    }
                     return;
                 }
                 cleanup();
-                alert('Error: Could not save the changeset data before generating an admin theme.');
+                deferred.reject('Could not save the changeset data before generating an admin theme.');
             });
+            return deferred.promise();
         }
         onClose(event, ui) {
             this.cleanupCurrentDownload();
@@ -4866,6 +4991,20 @@ var AmeAdminCustomizer;
             $element.on(transitionEvents, transitionEndCallback);
         }
     }
+    /**
+     * Whether to ask for confirmation when the user tries to exit the customizer.
+     */
+    let ExitPromptMode;
+    (function (ExitPromptMode) {
+        /**
+         * Ask if there are unsaved changes.
+         */
+        ExitPromptMode[ExitPromptMode["UnsavedChanges"] = 1] = "UnsavedChanges";
+        /**
+         * Ask if the current changeset hasn't been published yet.
+         */
+        ExitPromptMode[ExitPromptMode["UnpublishedChanges"] = 2] = "UnpublishedChanges";
+    })(ExitPromptMode || (ExitPromptMode = {}));
     class AdminCustomizer extends _admin_customizer_base_js__WEBPACK_IMPORTED_MODULE_8__.AmeAdminCustomizerBase.AdminCustomizerBase {
         constructor(scriptData) {
             super(scriptData);
@@ -4895,6 +5034,17 @@ var AmeAdminCustomizer;
                     this.settings.add(unserializeSetting(id, data));
                 }
             });
+            if (scriptData.changesetThemeMetadata) {
+                this.settings.addInitialThemeMetadata(scriptData.changesetThemeMetadata);
+            }
+            this.customBasePath = scriptData.customBasePath || null;
+            this.consoleLoggingEnabled = scriptData.isWpDebugEnabled || false;
+            if ((typeof scriptData.exitPromptMode === 'number') && (scriptData.exitPromptMode in ExitPromptMode)) {
+                this.exitPromptMode = scriptData.exitPromptMode;
+            }
+            else {
+                this.exitPromptMode = ExitPromptMode.UnpublishedChanges;
+            }
             let sectionIdCounter = 0;
             this.interfaceStructure = unserializeUiElement(scriptData.interfaceStructure, this.settings.get.bind(this.settings), (data) => {
                 switch (data.t) {
@@ -4922,19 +5072,69 @@ var AmeAdminCustomizer;
                         }
                 }
             });
-            //Add the changeset name to the URL (if not already present).
+            //Remove the reload parameter from the URL. It is only used to avoid
+            //caching issues, and is not needed otherwise.
             const currentUrl = new URL(window.location.href);
-            if (currentUrl.searchParams.get('ame-ac-changeset') !== this.settings.changesetName()) {
-                currentUrl.searchParams.set('ame-ac-changeset', this.settings.changesetName());
+            if (currentUrl.searchParams.get('_ame-ac-reload') !== null) {
+                currentUrl.searchParams.delete('_ame-ac-reload');
                 window.history.replaceState({}, '', currentUrl.href);
             }
-            //When the changeset name changes, also change the URL. Discourage navigating
-            //to the old URL (no pushState()) because the name is only expected to change
-            //when the old changeset becomes invalid (e.g. it's deleted or published).
+            //Also remove the "request new changeset" parameter.
+            if (currentUrl.searchParams.get('_ame-ac-new-changeset') !== null) {
+                currentUrl.searchParams.delete('_ame-ac-new-changeset');
+                window.history.replaceState({}, '', currentUrl.href);
+            }
+            const changesetPathTemplate = scriptData.changesetPathTemplate;
+            const changesetPlaceholder = '{changeset}';
+            function addChangesetToUrl(currentUrl, changesetName) {
+                const url = new URL(currentUrl);
+                if (changesetPathTemplate) {
+                    url.pathname = changesetPathTemplate.replace(changesetPlaceholder, changesetName);
+                    //With a custom path, the "page" parameter that points to the AC
+                    //admin page is not necessary and would be confusing.
+                    url.searchParams.delete('page');
+                    //When the changeset name is stored in the path, the "ame-ac-changeset"
+                    //parameter is no longer needed, and could be out of sync with the path.
+                    url.searchParams.delete('ame-ac-changeset');
+                }
+                else {
+                    url.searchParams.set('ame-ac-changeset', changesetName);
+                }
+                return url;
+            }
+            function getChangesetFromUrl(url) {
+                var _a;
+                const parsedUrl = new URL(url);
+                if (changesetPathTemplate) {
+                    function escapeRegExp(input) {
+                        return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    }
+                    const placeholderStart = changesetPathTemplate.indexOf(changesetPlaceholder);
+                    const placeholderEnd = placeholderStart + changesetPlaceholder.length;
+                    const changesetPathTemplateRegex = new RegExp('^' + escapeRegExp(changesetPathTemplate.slice(0, placeholderStart))
+                        + '([^a-zA-Z0-9]+)'
+                        + escapeRegExp(changesetPathTemplate.slice(placeholderEnd)));
+                    const match = parsedUrl.pathname.match(changesetPathTemplateRegex);
+                    return match ? match[1] : '';
+                }
+                else {
+                    return (_a = parsedUrl.searchParams.get('ame-ac-changeset')) !== null && _a !== void 0 ? _a : '';
+                }
+            }
+            //Add the changeset name to the URL (if not already present).
+            if (getChangesetFromUrl(window.location.href) !== this.settings.changesetName()) {
+                const newUrl = addChangesetToUrl(window.location.href, this.settings.changesetName());
+                window.history.replaceState({}, '', newUrl.href);
+            }
+            //When the changeset name changes, also change the URL.
             this.settings.changesetName.subscribe((changesetName) => {
-                const url = new URL(window.location.href);
-                url.searchParams.set('ame-ac-changeset', changesetName);
-                window.history.replaceState({}, '', url.href);
+                const url = addChangesetToUrl(window.location.href, changesetName);
+                if (scriptData.changesetPushStateEnabled) {
+                    window.history.pushState({}, '', url.href);
+                }
+                else {
+                    window.history.replaceState({}, '', url.href);
+                }
             });
             this.$saveButton = $('#ame-ac-apply-changes');
             //The save button should be enabled when:
@@ -5018,7 +5218,7 @@ var AmeAdminCustomizer;
                 return this.isImporting() || this.isDiscardingChanges();
             });
             //Initialize the "download admin theme" dialog.
-            this.downloadThemeDialog = new DownloadThemeDialog(() => this.settings.getCurrentChangeset().name(), () => this.settings.savePendingSettings());
+            this.downloadThemeDialog = new DownloadThemeDialog(() => this.settings.getCurrentChangeset().name(), () => this.settings.savePendingSettings(), this.settings.adminThemeMetadata, scriptData);
             //Toggle available extra actions based on changeset status.
             this.importActionEnabled = ko.pureComputed(() => {
                 const changeset = this.settings.getCurrentChangeset();
@@ -5043,7 +5243,13 @@ var AmeAdminCustomizer;
                 }
             });
             this.downloadThemeActionEnabled = ko.pureComputed(() => {
-                return !this.settings.isExclusiveOperationInProgress();
+                return (!this.settings.isExclusiveOperationInProgress()
+                    && !this.downloadThemeDialog.isOperationInProgress()
+                    //The changeset must already be saved for the download to work,
+                    //which means it should have a name.
+                    && (this.settings.getCurrentChangeset().name() !== '')
+                    //The changeset should probably be non-empty.
+                    && this.settings.getCurrentChangeset().isNonEmpty());
             });
             this.downloadThemeActionEnabled.subscribe((isEnabled) => {
                 if (this.$extraActionMenu) {
@@ -5121,14 +5327,25 @@ var AmeAdminCustomizer;
                     this.previewConnection.execute('previewSetting', setting.id, newValue);
                 }
                 else {
+                    let reason = 'Unknown';
+                    if (!setting.supportsPostMessage) {
+                        reason = 'Setting "' + setting.id + '" does not support postMessage';
+                    }
+                    else if (!this.previewConnection) {
+                        reason = 'No preview connection';
+                    }
+                    else if (!this.previewConnection.isConnected) {
+                        reason = 'Preview connection is not connected';
+                    }
+                    this.log('Reloading the preview frame because: ' + reason);
                     throttledReloadPreview();
                 }
             });
             const registerUnloadPrompt = () => {
                 //Ask for confirmation when the user tries to leave the page and the changeset
-                //has unpublished changes.
+                //has unpublished/unsaved changes.
                 $(window).on('beforeunload.ame-ac-exit-confirm', (event) => {
-                    if (this.hasUnpublishedChanges()) {
+                    if (this.isExitPromptNeeded()) {
                         event.preventDefault();
                         //Note: The confirmation prompt will only be displayed if the user
                         //has interacted with the page (e.g. clicked something).
@@ -5211,7 +5428,12 @@ var AmeAdminCustomizer;
             //Ensure that the changeset used in the preview matches the current
             //changeset and preview is enabled. This is just a precaution. Normally,
             //the preview script automatically changes link URLs.
-            parsedUrl.searchParams.set('ame-ac-changeset', this.settings.changesetName());
+            let changesetName = this.settings.changesetName();
+            if (changesetName === '') {
+                //Use a special value if the changeset hasn't been saved yet.
+                changesetName = TemporaryChangesetName;
+            }
+            parsedUrl.searchParams.set('ame-ac-changeset', changesetName);
             parsedUrl.searchParams.set('ame-ac-preview', '1');
             this.hasPendingPreviewReload = false; //Reloading now, so no longer pending.
             this.isFrameLoading = true;
@@ -5219,7 +5441,7 @@ var AmeAdminCustomizer;
             if (simulateFormSubmission) {
                 const formData = {
                     action: 'ws_ame_ac_refresh_preview_frame',
-                    "ame-ac-changeset": this.settings.changesetName(),
+                    "ame-ac-changeset": changesetName,
                     modified: JSON.stringify(unsavedChanges),
                     nonce: this.refreshPreviewNonce
                 };
@@ -5334,7 +5556,7 @@ var AmeAdminCustomizer;
             return this.previewConnection.execute(methodName, ...args);
         }
         confirmExit() {
-            if (this.hasUnpublishedChanges()) {
+            if (this.isExitPromptNeeded()) {
                 if (window.confirm(this.exitPromptMessage)) {
                     //Remove the confirmation prompt that appears when leaving the page.
                     //We don't want to show two prompts.
@@ -5345,12 +5567,23 @@ var AmeAdminCustomizer;
             }
             return true;
         }
-        hasUnpublishedChanges() {
+        isExitPromptNeeded() {
             const changeset = this.settings.getCurrentChangeset();
-            return (changeset.isNonEmpty()
-                && !changeset.wasPublished()
-                && (changeset.status() !== 'trash') //Can't publish a trashed changeset.
-            );
+            //No need to save anything if the changeset is empty.
+            if (!changeset.isNonEmpty()) {
+                return false;
+            }
+            switch (this.exitPromptMode) {
+                case ExitPromptMode.UnpublishedChanges:
+                    return (!changeset.wasPublished()
+                        && (changeset.status() !== 'trash') //Can't publish a trashed changeset.
+                    );
+                case ExitPromptMode.UnsavedChanges:
+                    const unsavedChanges = this.settings.unsavedChanges;
+                    return !_.isEmpty(unsavedChanges);
+                default:
+                    return false;
+            }
         }
         // noinspection JSUnusedGlobalSymbols -- Used in the Knockout template.
         toggleExtraActionMenu() {
@@ -5399,13 +5632,35 @@ var AmeAdminCustomizer;
             //Stop listening for clicks outside the menu.
             $(document).off('mousedown.ameAcExtraMenuHide');
         }
+        openMetadataDialog(mode) {
+            this.downloadThemeDialog.mode(mode);
+            this.downloadThemeDialog.isOpen(true);
+            this.isImportReportVisible(false);
+            this.hideExtraActionMenu();
+        }
         actionOpenDownloadDialog() {
             if (!this.downloadThemeActionEnabled()) {
                 return;
             }
-            this.downloadThemeDialog.isOpen(true);
-            this.isImportReportVisible(false);
-            this.hideExtraActionMenu();
+            this.openMetadataDialog(MetadataDialogMode.Download);
+        }
+        // noinspection JSUnusedGlobalSymbols -- Used in another plugin.
+        actionEditOrDownloadTheme() {
+            if (!this.downloadThemeActionEnabled()) {
+                return;
+            }
+            //If the user hasn't confirmed the theme metadata yet, show the dialog.
+            const metadata = this.settings.adminThemeMetadata();
+            if ((metadata === null) || !metadata.wasEverConfirmed) {
+                this.openMetadataDialog(MetadataDialogMode.Download);
+            }
+            else {
+                this.downloadThemeDialog.triggerDownloadWithErrorReporting(metadata);
+            }
+        }
+        // noinspection JSUnusedGlobalSymbols -- Used in another plugin.
+        actionOpenMetadataDialog() {
+            this.openMetadataDialog(MetadataDialogMode.Edit);
         }
         actionOpenImportDialog() {
             if (!this.importActionEnabled()) {
@@ -5434,13 +5689,22 @@ var AmeAdminCustomizer;
             this.settings.trashChangeset()
                 .then(() => {
                 //Reload the customizer with a new changeset.
-                //First, to get the customizer's base URL, get the current URL
-                //and remove all query parameters except "page".
                 const url = new URL(window.location.href);
-                const page = url.searchParams.get('page');
-                url.search = '';
-                url.searchParams.set('page', page || 'ame-admin-customizer');
-                //Don't need the hash either.
+                if (this.customBasePath) {
+                    url.pathname = this.customBasePath;
+                    url.search = '';
+                }
+                else {
+                    //To get the customizer's base URL, get the current URL
+                    //and remove all query parameters except "page".
+                    const page = url.searchParams.get('page');
+                    url.search = '';
+                    url.searchParams.set('page', page || 'ame-admin-customizer');
+                }
+                //Notify the customizer that we definitely want a new changeset;
+                //don't try to load a draft.
+                url.searchParams.set('_ame-ac-new-changeset', '1');
+                //Don't need the hash.
                 url.hash = '';
                 //Add a random parameter to force a reload.
                 url.searchParams.set('_ame-ac-reload', Math.random().toString(36).substring(7));
@@ -5586,6 +5850,11 @@ var AmeAdminCustomizer;
         }
         dismissImportReport() {
             this.isImportReportVisible(false);
+        }
+        log(message) {
+            if (this.consoleLoggingEnabled && console && console.log) {
+                console.log(message);
+            }
         }
     }
     AmeAdminCustomizer.AdminCustomizer = AdminCustomizer;
@@ -5860,13 +6129,14 @@ class AmeAcSectionLink extends _pro_customizables_ko_components_control_base_js_
             throw new Error('The uiElement parameter is required for AmeAcSectionLink');
         }
         this.targetElementId = _ame_ac_section_js__WEBPACK_IMPORTED_MODULE_2__.AmeAcSection.getSectionElementId(this.uiElement);
+        this.elementId = _ame_ac_section_js__WEBPACK_IMPORTED_MODULE_2__.AmeAcSection.getSectionLinkElementId(this.uiElement);
     }
     getExpectedUiElementType() {
         return Section;
     }
 }
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ((0,_pro_customizables_ko_components_control_base_js__WEBPACK_IMPORTED_MODULE_0__.createComponentConfig)(AmeAcSectionLink, `
-	<li class="ame-ac-section-link" data-bind="attr: {'data-target-id' : targetElementId}">
+	<li class="ame-ac-section-link" data-bind="attr: {'data-target-id' : targetElementId, 'id': elementId}">
 		<h3 class="ame-ac-section-title" data-bind="text: title"></h3>
 	</li>
 `));
@@ -5908,7 +6178,15 @@ class AmeAcSection extends _pro_customizables_ko_components_control_base_js__WEB
         }
         //To keep the header text alignment consistent when navigating between sections,
         //let's show something even if there are no breadcrumbs.
-        const emptyBreadcrumbText = 'Admin Menu Editor Pro';
+        const defaultEmptyBreadcrumbText = 'Admin Menu Editor Pro';
+        //Let other modules change the default text.
+        let filteredEmptyBreadcrumbText = null;
+        if (wp && wp.hooks && wp.hooks.applyFilters) {
+            filteredEmptyBreadcrumbText = wp.hooks.applyFilters('adminMenuEditor.ac.emptyBreadcrumbText', defaultEmptyBreadcrumbText);
+        }
+        const emptyBreadcrumbText = ((typeof filteredEmptyBreadcrumbText === 'string')
+            ? filteredEmptyBreadcrumbText
+            : defaultEmptyBreadcrumbText);
         this.breadcrumbText = ko.pureComputed(() => {
             if (this.breadcrumbs === null) {
                 return emptyBreadcrumbText;
@@ -5957,7 +6235,12 @@ class AmeAcSection extends _pro_customizables_ko_components_control_base_js__WEB
         }
     }
     static getSectionElementId(section) {
-        const prefix = 'ame-ac-section-';
+        return AmeAcSection.generateSectionElementId(section, 'ame-ac-section-');
+    }
+    static getSectionLinkElementId(section) {
+        return AmeAcSection.generateSectionElementId(section, 'ame-ac-slink-');
+    }
+    static generateSectionElementId(section, prefix) {
         if (section.id) {
             return prefix + section.id;
         }
@@ -6039,15 +6322,18 @@ class AmeAcStructure extends _pro_customizables_ko_components_control_base_js__W
     constructor(params, $element) {
         var _a;
         super(params, $element);
-        this.allSections = [];
+        this.allNavigationSections = [];
         const rootSection = new Section({
             t: 'section',
             id: 'structure-root',
             title: (_a = this.structure.title) !== null && _a !== void 0 ? _a : 'Root',
         }, this.structure.children);
-        //Recursively collect all sections.
+        //Recursively collect all navigable sections. Don't include content
+        //sections: their parents will output them, not this component.
         function collectChildSections(section, accumulator = []) {
-            accumulator.push(section);
+            if (section.preferredRole === 'navigation') {
+                accumulator.push(section);
+            }
             for (const child of section.children) {
                 if (child instanceof Section) {
                     collectChildSections(child, accumulator);
@@ -6055,17 +6341,17 @@ class AmeAcStructure extends _pro_customizables_ko_components_control_base_js__W
             }
             return accumulator;
         }
-        this.allSections = collectChildSections(rootSection);
+        this.allNavigationSections = collectChildSections(rootSection);
         //Give the breadcrumb list to each section, if available.
         if (typeof params.breadcrumbs !== 'undefined') {
-            for (const section of this.allSections) {
+            for (const section of this.allNavigationSections) {
                 section.componentParams.breadcrumbs = params.breadcrumbs;
             }
         }
     }
 }
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ((0,_pro_customizables_ko_components_control_base_js__WEBPACK_IMPORTED_MODULE_0__.createRendererComponentConfig)(AmeAcStructure, `
-	<!-- ko foreach: allSections -->
+	<!-- ko foreach: allNavigationSections -->
 		<!-- ko component: {name: 'ame-ac-section', params: $data.getComponentParams()} --><!-- /ko -->
 	<!-- /ko -->
 `));
@@ -6158,6 +6444,10 @@ class AmeBoxDimensions extends _control_base_js__WEBPACK_IMPORTED_MODULE_0__.KoS
         super(params, $element);
         this.inputIdPrefix = '_ame-box-dimensions-c-input-' + (nextId++);
         this.unitElementId = '_ame-box-dimensions-c-unit-' + (nextId++);
+        this.wrapperAttributes = {};
+        if ((typeof params.id === 'string') && (params.id !== '')) {
+            this.wrapperAttributes['id'] = '_ame-box-dimensions-w-' + params.id;
+        }
         if ((typeof params['dimensionNames'] !== 'undefined') && Array.isArray(params['dimensionNames'])) {
             this.dimensionsInOrder = params['dimensionNames'];
         }
@@ -6398,7 +6688,8 @@ class AmeBoxDimensions extends _control_base_js__WEBPACK_IMPORTED_MODULE_0__.KoS
     }
 }
 /* harmony default export */ const __WEBPACK_DEFAULT_EXPORT__ = ((0,_control_base_js__WEBPACK_IMPORTED_MODULE_0__.createControlComponentConfig)(AmeBoxDimensions, `
-	<fieldset data-bind="class: classString, enable: isEnabled, style: styles" data-ame-is-component="1">
+	<fieldset data-bind="class: classString, enable: isEnabled, style: styles, attr: wrapperAttributes"
+	          data-ame-is-component="1">
 		<!-- ko foreach: inputsInOrder -->
 			<div data-bind="class: ('ame-single-box-dimension ame-box-dimension-' + $data[0])">
 				<input type="text" inputmode="numeric" maxlength="20" pattern="\\s*-?[0-9]+(?:[.,]\\d*)?\\s*" 
@@ -7871,7 +8162,7 @@ class KoControlViewModel extends KoComponentViewModel {
             var _a;
             const attributes = ((_a = this.uiElement) === null || _a === void 0 ? void 0 : _a.inputAttributes) || {};
             const inputId = this.getPrimaryInputId();
-            if (inputId !== null) {
+            if ((inputId !== null) && (inputId !== '')) {
                 attributes.id = inputId;
             }
             //Note: The "name" field is not used because these controls are entirely JS-driven.

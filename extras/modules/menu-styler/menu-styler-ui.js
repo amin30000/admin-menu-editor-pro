@@ -135,6 +135,7 @@ jQuery(function ($) {
                 const value = updatedConfig[key];
                 AmeEditorApi.configDataAdapter.setPath(key, value);
             }
+            $(document).trigger('adminMenuEditor:menuConfigChanged');
         }
         isDialogOpen(newValue = null) {
             if (!this.dialogOpenObservable) {

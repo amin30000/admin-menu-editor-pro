@@ -29,7 +29,8 @@
 }
 
 //Override icons set as background images.
-#adminmenu#adminmenu#adminmenu #{$ame-menu-prefix} .wp-menu-image {
+#adminmenu#adminmenu#adminmenu #{$ame-menu-prefix} .wp-menu-image,
+#adminmenu#adminmenu#adminmenu #{$ame-menu-prefix} .wp-menu-image::before {
 	background-image: none;
 }
 

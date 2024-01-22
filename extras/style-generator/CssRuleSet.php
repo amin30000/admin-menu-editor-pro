@@ -82,6 +82,10 @@ class CssRuleSet implements CssStatement {
 					if ( $value->getValue('') !== '' ) {
 						$hasNonEmptySettings = true;
 					}
+				} else if ($value instanceof Expression) {
+					list($exprUsesSettings, $exprHasNonEmptySettings) = $value->checkUsedSettingStatus();
+					$hasSettings = $hasSettings || $exprUsesSettings;
+					$hasNonEmptySettings = $hasNonEmptySettings || $exprHasNonEmptySettings;
 				}
 			}
 

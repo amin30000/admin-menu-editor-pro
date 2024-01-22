@@ -616,6 +616,10 @@ li:not(.ame-ac-section-link) + .ame-ac-section-link {
   position: relative;
 }
 
+.ui-dialog-buttonset .ame-dialog-confirm-button {
+  min-width: 7em;
+}
+
 #ame-ac-download-progress-overlay {
   position: absolute;
   width: 100%;

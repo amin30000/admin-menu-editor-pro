@@ -7,19 +7,15 @@ import {WebpackManifestPlugin} from "webpack-manifest-plugin";
 export default (env, argv) => {
 	const currentMode = (argv.mode === 'production') ? 'production' : 'development';
 	const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
+	const __filename = url.fileURLToPath(import.meta.url);
 
 	return {
 		mode: currentMode,
 		entry: {
-			'admin-customizer': './extras/modules/admin-customizer/admin-customizer.ts'
-			/*
-			Note: The "menu-styler-ui.ts" script is not compiled because then you would
-			need to do a bunch of work to ensure that "menu-styler-features.ts" is compiled
-			as a separate entry point but the shared code is not duplicated. You would likely
-			have to extract the shared code into a separate file and then make the "features"
-			script a thin wrapper that just imports and runs the shared code.
-			That doesn't seem worth the effort at this time.
-			 */
+			'admin-customizer': './extras/modules/admin-customizer/admin-customizer.ts',
+			'menu-styler-ui': './extras/modules/menu-styler/menu-styler-ui.ts',
+			'menu-styler-features': './extras/modules/menu-styler/menu-styler-features.ts',
+			'admin-customizer-preview': './extras/modules/admin-customizer/preview-handler.ts',
 		},
 		output: {
 			path: path.resolve(__dirname, 'dist'),
@@ -39,13 +35,18 @@ export default (env, argv) => {
 				}
 			}
 		},
+		cache: {
+			type: 'filesystem',
+			buildDependencies: {
+				config: [__filename]
+			}
+		},
 		plugins: [
 			new webpack.DefinePlugin({
 				AME_IS_PRODUCTION: JSON.stringify(currentMode === 'production'),
 			}),
-			//This could be used later to automatically find and load the required
-			//chunks for each entry point. However, it doesn't handle inter-chunk
-			//dependencies.
+			//This can be used to automatically find and load the required chunks
+			//for each entry point. However, it doesn't handle inter-chunk dependencies.
 			new WebpackManifestPlugin({
 				fileName: 'build.manifest.json',
 				generate: (seed, files) => {

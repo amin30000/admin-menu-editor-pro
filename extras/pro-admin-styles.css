@@ -1,3 +1,4 @@
+@charset "UTF-8";
 /*
  * Third level menus.
  */
@@ -64,6 +65,14 @@
 
 .folded #adminmenu li.ame-has-deep-submenu.ame-has-highlighted-item > .ame-deep-submenu, .folded #adminmenu li.ame-has-deep-submenu.ame-has-current-deep-submenu > .ame-deep-submenu {
   border-left-width: 0;
+}
+
+#adminmenu li.ws-ame-primary-am-item + li.ws-ame-secondary-am-item a:first-of-type:before,
+#adminmenu li.ws-ame-secondary-am-item + li.ws-ame-secondary-am-item a:first-of-type:before {
+  content: "– ";
+  font-weight: 800;
+  vertical-align: top;
+  line-height: 1;
 }
 
 /*# sourceMappingURL=pro-admin-styles.css.map */

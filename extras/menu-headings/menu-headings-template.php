@@ -214,7 +214,7 @@
 	</div>
 
 	<div class="ws_dialog_buttons">
-		<input type="button" class="button-primary" value="Save Changes" id="ws_save_menu_heading_settings"
+		<input type="button" class="button-primary" value="OK" id="ws_save_menu_heading_settings"
 		       data-bind="click: onConfirm.bind($root)">
 		<input type="button" class="button ws_close_dialog" value="Cancel" data-bind="click: onCancel.bind($root)">
 	</div>

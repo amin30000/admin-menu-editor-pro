@@ -13,6 +13,25 @@ class ameRexCapability implements ArrayAccess {
 	public $usedByPostTypes = array();
 
 	/**
+	 * $permissions, $documentationUrl, and $notes are set dynamically based on
+	 * the component context selected for the capability. Some of them will usually
+	 * remain unset/unmodified.
+	 *
+	 * @see \ameRoleEditor::assignCapabilitiesToComponents()
+	 *
+	 * @var string[]|null
+	 */
+	public $permissions = null;
+	/**
+	 * @var string|null
+	 */
+	public $documentationUrl = null;
+	/**
+	 * @var string|null
+	 */
+	public $notes = null;
+
+	/**
 	 * @param string $componentId
 	 * @param ameRexComponentCapabilityInfo|mixed $componentContext
 	 */

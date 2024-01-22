@@ -60,6 +60,7 @@ class AmeBoxDimensions extends KoStandaloneControl {
 
 	public readonly unitDropdownOptions: UnitDropdownData;
 	public readonly unitElementId: string;
+	public readonly wrapperAttributes: Record<string, string>;
 
 	public readonly isLinkActive: KnockoutObservable<boolean>;
 
@@ -81,6 +82,11 @@ class AmeBoxDimensions extends KoStandaloneControl {
 
 		this.inputIdPrefix = '_ame-box-dimensions-c-input-' + (nextId++);
 		this.unitElementId = '_ame-box-dimensions-c-unit-' + (nextId++);
+
+		this.wrapperAttributes = {};
+		if ((typeof params.id === 'string') && (params.id !== '')) {
+			this.wrapperAttributes['id'] = '_ame-box-dimensions-w-' + params.id;
+		}
 
 		if ((typeof params['dimensionNames'] !== 'undefined') && Array.isArray(params['dimensionNames'])) {
 			this.dimensionsInOrder = params['dimensionNames'];
@@ -264,7 +270,7 @@ class AmeBoxDimensions extends KoStandaloneControl {
 	}
 
 	// noinspection JSUnusedGlobalSymbols -- Used in the template.
-	getSettingFor(key: InputKey): Setting|null {
+	getSettingFor(key: InputKey): Setting | null {
 		const settingName = 'value.' + key;
 		if (settingName in this.settings) {
 			return this.settings[settingName];
@@ -349,7 +355,8 @@ class AmeBoxDimensions extends KoStandaloneControl {
 }
 
 export default createControlComponentConfig(AmeBoxDimensions, `
-	<fieldset data-bind="class: classString, enable: isEnabled, style: styles" data-ame-is-component="1">
+	<fieldset data-bind="class: classString, enable: isEnabled, style: styles, attr: wrapperAttributes"
+	          data-ame-is-component="1">
 		<!-- ko foreach: inputsInOrder -->
 			<div data-bind="class: ('ame-single-box-dimension ame-box-dimension-' + $data[0])">
 				<input type="text" inputmode="numeric" maxlength="20" pattern="\\s*-?[0-9]+(?:[.,]\\d*)?\\s*" 

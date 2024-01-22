@@ -7,7 +7,7 @@ if ( !defined('WS_AME_USE_BUNDLES') ) {
 	 * If set to true, the plugin will use Webpack bundles when available. If set
 	 * to false, it will load individual JS files instead.
 	 */
-	define('WS_AME_USE_BUNDLES', !(defined('WP_DEBUG') && WP_DEBUG));
+	define('WS_AME_USE_BUNDLES', true);
 }
 
 $thisDirectory = dirname(__FILE__);

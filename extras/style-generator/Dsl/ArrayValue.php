@@ -21,6 +21,22 @@ class ArrayValue extends Expression {
 		);
 	}
 
+	public function checkUsedSettingStatus() {
+		$usesSettings = false;
+
+		foreach($this->items as $item) {
+			list($itemUsesSettings, $itemHasNonEmptySettings) = $item->checkUsedSettingStatus();
+			if ( $itemHasNonEmptySettings ) {
+				return [true, true];
+			}
+			if ( $itemUsesSettings ) {
+				$usesSettings = true;
+			}
+		}
+
+		return [$usesSettings, false];
+	}
+
 	/**
 	 * @inheritDoc
 	 * @noinspection PhpLanguageLevelInspection

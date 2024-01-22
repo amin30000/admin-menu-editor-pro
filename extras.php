@@ -976,19 +976,32 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 				die("Exported data not found");
 			}
 
+			/*
+			 * Compatibility workaround: Some buggy plugins add superfluous whitespace to
+			 * the beginning of every WP response because they have whitespace after the closing
+			 * PHP tag in one of their files. As a result, the response size doesn't match
+			 * out Content-Length header and the browser cuts off the end of the file.
+			 *
+			 * To work around that, let's add some sacrificial whitespace to the end of the file.
+			 * If some of it gets cut off, we won't lose any important data.
+			 */
+			$content = $export['menu'];
+			$content .= str_repeat(' ', 100);
+
 			//Force file download
 		    header("Content-Description: File Transfer");
 		    header('Content-Disposition: attachment; filename="' . $export['filename'] . '"');
 		    header("Content-Type: application/force-download");
 		    header("Content-Transfer-Encoding: binary");
-		    header("Content-Length: " . strlen($export['menu']));
+		    header("Content-Length: " . strlen($content));
 
 		     /* The three lines below basically make the download non-cacheable */
 			header("Cache-control: private");
 			header("Pragma: private");
 			header("Expires: Mon, 26 Jul 1997 05:00:00 GMT");
 
-		    echo $export['menu'];
+			//phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Expected to be JSON.
+		    echo $content;
 
 			die();
 
@@ -2160,18 +2173,27 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 
 	public function output_fa_selector_tab() {
 		echo '<div class="ws_tool_tab" id="ws_fontawesome_icons_tab" style="display: none">';
+		?>
+		<div class="ws_icon_search_bar">
+			<label>
+				<span class="screen-reader-text">Icon search box</span>
+				<input type="text" class="regular-text ws_icon_search_box" placeholder="Search icons">
+			</label>
+		</div>
+		<?php
 
 		$icons = $this->get_available_fa_icons();
-		foreach($icons as $icon_name) {
+		foreach ($icons as $icon_name) {
 			printf(
 				'<div class="ws_icon_option" title="%1$s" data-icon-url="ame-fa-%2$s">
 					<div class="ws_icon_image ame-fa ame-fa-%2$s"></div>
 				</div>',
 				esc_attr(ucwords(str_replace('-', ' ', $icon_name))),
-				$icon_name
+				esc_attr($icon_name)
 			);
 		}
 
+		echo '<div class="ws_no_matching_icons" style="display: none">No results found</div>';
 		echo '<div class="clear"></div></div>';
 	}
 
@@ -2372,7 +2394,7 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 			'path' => AME_ROOT_DIR . '/extras/modules/tweaks/tweaks.php',
 			'className'    => 'ameTweakManager',
 			'title'        => 'Tweaks',
-			'requiredPhpVersion' => '5.4',
+			'requiredPhpVersion' => '5.6',
 		);
 
 		$modules['separator-styles'] = array(
@@ -2390,21 +2412,19 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 			'isAlwaysActive'     => true,
 		);
 
-		if (defined('AME_CUSTOMIZABLE_DEV') && AME_CUSTOMIZABLE_DEV) {
-			$modules['admin-customizer'] = [
-				'path'               => AME_ROOT_DIR . '/extras/modules/admin-customizer/admin-customizer.php',
-				'className'          => 'YahnisElsts\\AdminMenuEditor\\AdminCustomizer\\AmeAdminCustomizer',
-				'title'              => 'Admin Customizer',
-				'requiredPhpVersion' => '5.6',
-			];
+		$modules['admin-customizer'] = [
+			'path'               => AME_ROOT_DIR . '/extras/modules/admin-customizer/admin-customizer.php',
+			'className'          => 'YahnisElsts\\AdminMenuEditor\\AdminCustomizer\\AmeAdminCustomizer',
+			'title'              => 'Admin Customizer',
+			'requiredPhpVersion' => '5.6',
+		];
 
-			$modules['admin-theme-builder'] = [
-				'path'               => AME_ROOT_DIR . '/extras/modules/dashboard-styler/dashboard-styler.php',
-				'className'          => 'YahnisElsts\\AdminMenuEditor\\DashboardStyler\\DashboardStyler',
-				'title'              => 'Dashboard Styler',
-				'requiredPhpVersion' => '5.6',
-			];
-		}
+		$modules['dashboard-styler'] = [
+			'path'               => AME_ROOT_DIR . '/extras/modules/dashboard-styler/dashboard-styler.php',
+			'className'          => 'YahnisElsts\\AdminMenuEditor\\DashboardStyler\\DashboardStyler',
+			'title'              => 'Dashboard Styler',
+			'requiredPhpVersion' => '5.6',
+		];
 
 		$modules['menu-colors'] = array(
 			'path'               => AME_ROOT_DIR . '/extras/modules/admin-menu-colors/admin-menu-colors.php',
@@ -2416,7 +2436,7 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 
 		if (defined('AME_CUSTOMIZABLE_DEV') && AME_CUSTOMIZABLE_DEV) {
 			$modules['sample-module'] = [
-				'path'               => AME_ROOT_DIR . '/extras/customizables/SampleModule.php',
+				'path'               => AME_ROOT_DIR . '/customizables/SampleModule.php',
 				'className'          => '\\YahnisElsts\\AdminMenuEditor\\Customizable\\Design\\SampleModule',
 				'title'              => 'Sample Module',
 				'requiredPhpVersion' => '5.6',

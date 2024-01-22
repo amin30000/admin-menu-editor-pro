@@ -2,8 +2,8 @@
 Contributors: whiteshadow
 Tags: admin, dashboard, menu, security, wpmu
 Requires at least: 4.7
-Tested up to: 6.2
-Stable tag: 2.20
+Tested up to: 6.4.1
+Stable tag: 2.22.1
 
 Lets you directly edit the WordPress admin menu. You can re-order, hide or rename existing menus, add custom menus and more.
 
@@ -82,6 +82,56 @@ Here are some usage tips and other things that can be good to know when using th
 == Changelog ==
 
 [Get the latest version here.](http://adminmenueditor.com/updates/)
+
+= 2.22.1 (2023-11-09) =
+* Fixed a conflict with Query Monitor that had the potential to cause a fatal error in some rare situations (no errors actually reported by users so far).
+* Tested with WP 6.4.1.
+
+= 2.22 (2023-10-17) =
+##### Added
+* Added a search box for menu icons. For the moment, Dashicons and Font Awesome icons have separate search boxes.
+* Added more Dashicons. Now the icon dropdown should show all currently existing Dashicons.
+
+= 2.21.2 (2023-10-09) =
+##### Fixed
+* Fixed a conflict that prevented users from changing the menu icon of the Wordfence plugin (and possibly some other plugins that use similar CSS). Note that the option "Attempt to override menu icon CSS..." in the "Settings" tab may need to be enabled for this fix to be effective.
+* Fixed a crash if the plugin encounters a supposed "menu item" that has the wrong data type, like a boolean. This was likely caused by a bug in an unidentified plugin or theme that modified the menu list incorrectly.
+* Fixed plugin visibility restrictions not being applied when editing plugin files via AJAX.
+* Fixed separator and admin color settings not being included when generating an admin theme in the Admin Customizer (the generated CSS was correct, but the settings could not be reimported later).
+* Added a compatibility workaround to the menu export feature for dealing with buggy plugins that add superfluous whitespace to every WordPress response.
+
+##### Changed
+* Prevented the Admin Customizer interface from being displayed in any kind of a frame. Let's not do recursion.
+* Tested with WP 6.3.1 and WP 6.4-alpha.
+
+= 2.21.1 (2023-07-21) =
+##### Fixed
+* Fixed a persistent fatal error that could be triggered by changing certain menu style settings in the Admin Customizer *without* editing the admin menu first. 
+* Fixed a PHP 8 deprecation notice about creating dynamic properties on the `ameRexCapability` class. 
+
+= 2.21 (2023-07-14) =
+##### Added
+* Added "Admin Customizer": a new visual customization interface that lets you change various admin dashboard styles with live preview. It was inspired by the Theme Customizer. Admin Customizer includes the existing admin menu style settings and adds a number of new style settings for various admin UI elements: 
+ * Buttons
+ * Boxes (dashboard widgets and meta boxes)
+ * Page headings
+ * Tables
+ * The Toolbar (Admin Bar)
+* Admin Customizer can generate an admin theme from your custom style settings. The generated admin theme includes only a subset of visual settings (e.g. no menu permissions or custom widgets), and it is entirely stand-alone: you can use it without Admin Menu Editor Pro.
+* Note: Since Admin Customizer is a complex and brand new feature, it may have currently more bugs than the rest of the plugin.
+* Added more options to the "Tweaks" tab that can be used to hide more profile fields.
+
+##### Changed
+* Added a dash before secondary menu items like "Easy Hide" and "Admin Customizer" when they are shown below the main "Menu Editor Pro" menu item.
+* Renamed some buttons that don't immediately save settings to the database from "Save Changes" to "OK". For example, this affects the confirmation button in the "Style" dialog. The behaviour is still the same, only the labels have changed. You still need to click the "Save Changes" button in the menu editor to actually save the menu configuration.
+* Added a green indicator to the "Save Changes" button on the menu editor page when there are certain types of pending changes.
+
+##### Fixed
+* Fixed a minor conflict with Essential Grid 3.0.17 that caused tooltips in AME dialogs to appear underneath the dialogs.
+* Fixed the JS error "Uncaught TypeError: colorPresets is null" when trying to edit the colors of an individual menu item when there is no global menu color preset.
+* Fixed an inefficiency where some menu logo styles were added even when no logo was selected.
+* Fixed a rare but severe admin dashboard performance issue that was triggered by dynamically generated stylesheets using the `Content-Length` HTTP header.
+* Fixed menu item color settings not being applied to custom menu items that don't have a custom element ID. This used to work before, but was accidentally broken around version 2.19.
 
 = 2.20 (2023-05-30) =
 ##### Added

@@ -9,6 +9,7 @@ use YahnisElsts\AdminMenuEditor\Customizable\Builders\SettingFactory;
 use YahnisElsts\AdminMenuEditor\Customizable\Controls\AlignmentSelector;
 use YahnisElsts\AdminMenuEditor\Customizable\Controls\Container;
 use YahnisElsts\AdminMenuEditor\Customizable\SettingCondition;
+use YahnisElsts\AdminMenuEditor\Customizable\Settings\AbstractSetting;
 use YahnisElsts\AdminMenuEditor\Customizable\Storage\AbstractSettingsDictionary;
 use YahnisElsts\AdminMenuEditor\Customizable\Storage\MenuConfigurationWrapper;
 use YahnisElsts\AdminMenuEditor\Customizable\Storage\StorageInterface;
@@ -530,6 +531,7 @@ class SeparatorStyleSettings extends AbstractSettingsDictionary {
 	protected function createSettings() {
 		$f = $this->settingFactory();
 		$f->enablePostMessageSupport();
+		$f->setTags(AbstractSetting::TAG_ADMIN_THEME);
 		$settings = [
 			$f->boolean('customSettingsEnabled', 'Use custom separator styles'),
 			$f->boolean('useTopLevelSettingsForSubmenus', 'Use the same settings as top level separators'),
@@ -540,6 +542,7 @@ class SeparatorStyleSettings extends AbstractSettingsDictionary {
 				$separatorType,
 				function (SettingFactory $cf) {
 					$cf->enablePostMessageSupport();
+					$cf->setTags(AbstractSetting::TAG_ADMIN_THEME);
 					return [
 						$cf->stringEnum(
 							'colorType',

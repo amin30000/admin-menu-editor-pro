@@ -224,4 +224,21 @@ class DslFunctions {
 	private static function constrain($value, $min, $max) {
 		return min(max($value, $min), $max);
 	}
+
+	public static function runIfImageSettingContainsImage($args) {
+		//Note: This method receives the value of the image setting,
+		//not the setting itself.
+		$value = $args['value'];
+		$thenResult = array_key_exists('thenResult', $args) ? $args['thenResult'] : true;
+		$elseResult = array_key_exists('elseResult', $args) ? $args['elseResult'] : null;
+
+		if ( empty($value) || (!is_array($value)) ) {
+			return $elseResult;
+		}
+
+		if ( empty($value['attachmentId']) && empty($value['externalUrl']) ) {
+			return $elseResult;
+		}
+		return $thenResult;
+	}
 }

@@ -583,6 +583,7 @@ export namespace AmeCustomizable {
 			return {
 				...this.componentParams,
 				uiElement: this,
+				id: this.id,
 				description: this.description,
 				classes: this.classes,
 				styles: this.styles,

@@ -5497,7 +5497,8 @@
   font-size: 18px !important;
 }
 
-#adminmenu#adminmenu#adminmenu .ame-menu-fa .wp-menu-image {
+#adminmenu#adminmenu#adminmenu .ame-menu-fa .wp-menu-image,
+#adminmenu#adminmenu#adminmenu .ame-menu-fa .wp-menu-image::before {
   background-image: none;
 }
 

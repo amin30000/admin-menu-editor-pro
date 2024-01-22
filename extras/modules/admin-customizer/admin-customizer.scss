@@ -836,6 +836,11 @@ $dialogContentHorizontalPadding: 8px;
 //region Download theme dialog
 #ame-ac-download-theme-dialog {
 	position: relative;
+
+}
+
+.ui-dialog-buttonset .ame-dialog-confirm-button {
+	min-width: 7em;
 }
 
 #ame-ac-download-progress-overlay {
@@ -850,6 +855,7 @@ $dialogContentHorizontalPadding: 8px;
 	z-index: 2;
 	cursor: wait;
 }
+
 //endregion
 
 //region Import theme feature
@@ -858,6 +864,7 @@ $dialogContentHorizontalPadding: 8px;
 		th {
 			text-align: left;
 		}
+
 		td {
 			text-align: right;
 			padding-left: 1em;
@@ -892,11 +899,15 @@ $dialogContentHorizontalPadding: 8px;
 }
 
 @keyframes ac-progress-spin {
-	0% { transform: rotate(0deg); }
-	100% { transform: rotate(360deg); }
+	0% {
+		transform: rotate(0deg);
+	}
+	100% {
+		transform: rotate(360deg);
+	}
 }
 
-.ame-ac-spinner-container   {
+.ame-ac-spinner-container {
 	width: 100%;
 	height: 100%;
 
@@ -905,4 +916,5 @@ $dialogContentHorizontalPadding: 8px;
 	justify-content: center;
 	align-items: center;
 }
+
 //endregion

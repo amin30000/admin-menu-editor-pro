@@ -271,7 +271,7 @@ export abstract class KoControlViewModel<C extends Control> extends KoComponentV
 			const attributes = this.uiElement?.inputAttributes || {};
 
 			const inputId = this.getPrimaryInputId();
-			if (inputId !== null) {
+			if ((inputId !== null) && (inputId !== '')) {
 				attributes.id = inputId;
 			}
 			//Note: The "name" field is not used because these controls are entirely JS-driven.

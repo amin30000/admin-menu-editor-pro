@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites errors="0"
+            failures="0"
+            tests="2">
+
+  <testsuite name="basic"
+    errors="0" failures="0" hostname="" id="" package="basic" skipped="0"
+    tests="2" time="37.73" timestamp="">
+  
+    <testcase name="should exist" classname="basic" time="9.578" assertions="5">
+
+    
+
+    
+
+    
+
+    
+
+    
+    </testcase>
+  
+    <testcase name="can rename menu items" classname="basic" time="9.286" assertions="8">
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+
+    
+    </testcase>
+  
+
+  
+
+    
+
+  
+  </testsuite>
+</testsuites>

@@ -7,6 +7,7 @@ use YahnisElsts\AdminMenuEditor\Customizable\Controls\Control;
 use YahnisElsts\AdminMenuEditor\Customizable\HtmlHelper;
 use YahnisElsts\AdminMenuEditor\Customizable\Rendering\Renderer;
 use YahnisElsts\AdminMenuEditor\Customizable\Rendering\TabbedPanelRenderer;
+use YahnisElsts\AdminMenuEditor\Customizable\Settings\AbstractSetting;
 use YahnisElsts\AdminMenuEditor\Customizable\Settings\ColorSetting;
 use YahnisElsts\AdminMenuEditor\Customizable\Settings\MapSetting;
 use YahnisElsts\AdminMenuEditor\Customizable\Settings\UserDefinedStruct;
@@ -536,10 +537,18 @@ class MenuColorsModule extends \ameModule {
 			$customMenu['icon_color_overrides'] = null;
 		}
 
+		list($generatedCss, $modifiedMenu) = $this->generateMenuColorStyle(
+			$currentSettings,
+			$customMenu,
+			$globalGenerator
+		);
+		if ( $modifiedMenu !== null ) {
+			$customMenu = $modifiedMenu;
+		}
+
 		//Update the modification time if there are any custom icon colors or custom CSS.
 		//This is used to refresh the CSS cache. Since individual menu items can have
 		//their own custom colors, simply checking for global presets is not enough.
-		$generatedCss = $this->generateMenuColorStyle($currentSettings, $customMenu, $globalGenerator);
 		if ( !empty($globalIconColors) || !empty($generatedCss) ) {
 			$customMenu['color_css_modified'] = time();
 		} else {
@@ -622,10 +631,11 @@ class MenuColorsModule extends \ameModule {
 							$settings = $this->getSettings($menuConfigId);
 						}
 
-						return $this->generateMenuColorStyle(
+						list($css,) = $this->generateMenuColorStyle(
 							$settings,
 							$this->menuEditor->load_custom_menu($menuConfigId)
 						);
+						return $css;
 					},
 				];
 			},
@@ -637,7 +647,7 @@ class MenuColorsModule extends \ameModule {
 	 * @param MenuColorSettings|null $currentSettings
 	 * @param array $customMenu
 	 * @param StyleGenerator|null $globalGenerator
-	 * @return string
+	 * @return array{string, array|null} A CSS string and either the modified custom menu or NULL if no changes were made.
 	 */
 	private function generateMenuColorStyle($currentSettings, $customMenu, $globalGenerator = null) {
 		$cssBlocks = [];
@@ -652,9 +662,9 @@ class MenuColorsModule extends \ameModule {
 			}
 		}
 
+		$colorizedMenuCount = 0;
 		if ( !empty($customMenu['tree']) ) {
 			$usedIds = [];
-			$colorizedMenuCount = 0;
 			$generator = $this->getPartialStyleGenerator(false);
 
 			foreach ($customMenu['tree'] as &$item) {
@@ -706,7 +716,15 @@ class MenuColorsModule extends \ameModule {
 			}
 		}
 
-		return implode("\n", $cssBlocks);
+		$css = implode("\n", $cssBlocks);
+
+		if ( $colorizedMenuCount > 0 ) {
+			$modifiedMenu = $customMenu;
+		} else {
+			$modifiedMenu = null;
+		}
+
+		return [$css, $modifiedMenu];
 	}
 }
 
@@ -765,6 +783,7 @@ class MenuColorSettings extends AbstractSettingsDictionary {
 			self::SETTING_ID_PREFIX . 'activePreset',
 			$presetSlot->buildSlot('[global]')
 		);
+		$activePreset->addTags(AbstractSetting::TAG_ADMIN_THEME);
 
 		foreach (MenuColorsModule::MENU_COLOR_VARIABLES as $variable => $label) {
 			$activePreset->createChild(

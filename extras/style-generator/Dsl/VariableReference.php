@@ -27,6 +27,10 @@ class VariableReference extends Expression {
 		return $this->generator->resolveVariable($this->name);
 	}
 
+	public function checkUsedSettingStatus() {
+		return $this->generator->checkSettingsUsedByVariable($this->name);
+	}
+
 	/** @noinspection PhpLanguageLevelInspection */
 	#[\ReturnTypeWillChange]
 	public function jsonSerialize() {

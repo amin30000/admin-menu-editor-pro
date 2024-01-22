@@ -1,5 +1,7 @@
 <?php
 
+use YahnisElsts\AdminMenuEditor\WebpackRegistry\WebpackAssetRegistry;
+
 class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 	const WPML_CONTEXT = 'admin-menu-editor menu texts';
 
@@ -144,6 +146,11 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 		'ame-jquery-cookie' => 'js/jquery.biscuit.js',
 	);
 	private $registered_jquery_plugins = array();
+
+	/**
+	 * @var null|\YahnisElsts\AdminMenuEditor\WebpackRegistry\WebpackAssetRegistry
+	 */
+	private $webpack_registry = null;
 
 	function init(){
 		$this->sitewide_options = true;
@@ -592,8 +599,12 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 			add_action("admin_print_scripts-$page", array($this, 'enqueue_scripts'), 1);
 			add_action("admin_print_styles-$page", array($this, 'enqueue_styles'));
 
-			//Make sure Lodash doesn't conflict with the copy of Underscore that's bundled with WordPress.
-			add_filter('script_loader_tag', array($this, 'lodash_noconflict'), 10, 2); //Filter exists since WP 4.1.
+			//A special CSS class lets us conditionally style the menu item and its siblings.
+			ameMenuItem::add_class_to_submenu_item(
+				$parent_slug,
+				'menu_editor',
+				'ws-ame-primary-am-item'
+			);
 
 			//Let modules do something when loading a specific tab but before output starts.
 			add_action('load-' . $page, array($this, 'trigger_tab_load_event'));
@@ -657,7 +668,7 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 
 		//Is there a custom menu to use?
 		$custom_menu = $this->load_custom_menu();
-		if ( $custom_menu !== null ){
+		if ( ($custom_menu !== null) && !empty($custom_menu['tree']) ){
 			//Merge in data from the default menu
 			$custom_menu['tree'] = $this->menu_merge($custom_menu['tree']);
 
@@ -907,6 +918,9 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 
 		//Lodash library
 		wp_register_auto_versioned_script('ame-lodash', plugins_url('js/lodash.min.js', $this->plugin_file));
+		//Make sure Lodash doesn't conflict with the copy of Underscore that's bundled with WordPress.
+		//Revert the "_" variable to its original value and store Lodash in "wsAmeLodash" instead.
+		wp_add_inline_script('ame-lodash', 'window.wsAmeLodash = _.noConflict();');
 
 		//Knockout
 		foreach(array('ame-knockout', 'knockout') as $koAlias) {
@@ -924,7 +938,7 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 		wp_register_auto_versioned_script('ame-mini-functional-lib', plugins_url('js/mini-func.js', $this->plugin_file));
 
 		if ( function_exists('ws_ame_register_customizable_js_lib') ) {
-			ws_ame_register_customizable_js_lib();
+			ws_ame_register_customizable_js_lib($this);
 		}
 	}
 
@@ -1008,7 +1022,7 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 		);
 
 		//Let extras register their scripts.
-		do_action('admin_menu_editor-register_scripts');
+		do_action('admin_menu_editor-register_scripts', $this);
 	}
 
 	/**
@@ -1329,20 +1343,6 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 	}
 
 	/**
-	 * Revert the "_" variable to its original value and store Lodash in "wsAmeLodash" instead.
-	 *
-	 * @param string $tag
-	 * @param string $script_handle
-	 * @return string
-	 */
-	public function lodash_noconflict($tag, $script_handle) {
-		if ($script_handle === 'ame-lodash') {
-			$tag .= '<script type="text/javascript">wsAmeLodash = _.noConflict();</script>';
-		}
-		return $tag;
-	}
-
-	/**
 	 * Compatibility workaround for All In One Event Calendar 1.8.3-premium.
 	 *
 	 * The event calendar plugin is known to crash Admin Menu Editor Pro 1.40. The exact cause
@@ -1441,10 +1441,14 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 
 		if ( !empty($custom_menu) ) {
 			$custom_menu['prebuilt_virtual_caps'] = $this->build_virtual_capability_list($custom_menu);
-		}
 
-		if ( !empty($custom_menu) && $this->options['compress_custom_menu'] ) {
-			$custom_menu = ameMenu::compress($custom_menu);
+			if ( $this->options['compress_custom_menu'] ) {
+				$custom_menu = ameMenu::compress($custom_menu);
+			}
+
+			if ( empty($custom_menu['format']) ) {
+				$custom_menu = ameMenu::add_format_header($custom_menu);
+			}
 		}
 
 		if ($config_id === 'site') {
@@ -3284,8 +3288,10 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 
 		//Include caps that are required to access menu items (grant_access).
 		$menuCaps = array();
-		foreach($custom_menu['tree'] as $item) {
-			$menuCaps = self::array_replace_recursive($menuCaps, $this->get_virtual_caps_for($item));
+		if ( !empty($custom_menu['tree']) ) {
+			foreach ($custom_menu['tree'] as $item) {
+				$menuCaps = self::array_replace_recursive($menuCaps, $this->get_virtual_caps_for($item));
+			}
 		}
 
 		//grant_access settings on individual items have precedence.
@@ -4048,7 +4054,7 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 					'ame-force-dashicons',
 					plugins_url('css/force-dashicons.css', $this->plugin_file),
 					array(),
-					'20210226'
+					'20230828-2'
 				);
 			}
 		}
@@ -5184,6 +5190,19 @@ class WPMenuEditor extends MenuEd_ShadowPluginFramework {
 		return 'am/' . $level . '/' . $suffix;
 	}
 
+	public function get_webpack_registry() {
+		if ( !isset($this->webpack_registry) ) {
+			if ( class_exists(WebpackAssetRegistry::class) ) {
+				$this->webpack_registry = new WebpackAssetRegistry(
+					AME_ROOT_DIR . '/dist/build.manifest.json',
+					AME_ROOT_DIR . '/dist'
+				);
+			}
+		}
+
+		return $this->webpack_registry;
+	}
+
 } //class
 
 
@@ -5254,6 +5273,11 @@ class ameMenuTemplateBuilder {
 	 * @param string|null $parent
 	 */
 	private function addItem($wpItem, $position, $parent = null) {
+		//The item should always be array-like.
+		if ( !is_array($wpItem) && !($wpItem instanceof ArrayAccess) ) {
+			return;
+		}
+
 		$item = ameMenuItem::fromWpItem($wpItem, $position, $parent);
 
 		//Skip separators.

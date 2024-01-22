@@ -11,6 +11,7 @@ require_once __DIR__ . '/ameHideSelectorTweak.php';
 require_once __DIR__ . '/ameHideSidebarTweak.php';
 require_once __DIR__ . '/ameHideSidebarWidgetTweak.php';
 require_once __DIR__ . '/ameDelegatedTweak.php';
+require_once __DIR__ . '/ameJqueryTweak.php';
 require_once __DIR__ . '/ameTinyMceButtonManager.php';
 require_once __DIR__ . '/ameAdminCssTweakManager.php';
 require_once __DIR__ . '/ameGutenbergBlockManager.php';
@@ -26,6 +27,8 @@ class ameTweakManager extends amePersistentModule {
 	const HIDEABLE_ITEM_COMPONENT = 'tw';
 	const HIDEABLE_ITEM_PREFIX = 'tweaks/';
 
+	const BASIC_TWEAK_PROPERTIES = ['id' => true, 'enabledForActor' => true];
+
 	protected $tabSlug = 'tweaks';
 	protected $tabTitle = 'Tweaks';
 	protected $optionName = 'ws_ame_tweak_settings';
@@ -35,22 +38,22 @@ class ameTweakManager extends amePersistentModule {
 	/**
 	 * @var ameBaseTweak[]
 	 */
-	private $tweaks = array();
+	private $tweaks = [];
 
 	/**
 	 * @var ameBaseTweak[]
 	 */
-	private $pendingTweaks = array();
+	private $pendingTweaks = [];
 
 	/**
 	 * @var ameBaseTweak[]
 	 */
-	private $postponedTweaks = array();
+	private $postponedTweaks = [];
 
 	/**
 	 * @var ameTweakSection[]
 	 */
-	private $sections = array();
+	private $sections = [];
 
 	private $editorButtonManager;
 	private $adminCssManager;
@@ -64,29 +67,29 @@ class ameTweakManager extends amePersistentModule {
 	/**
 	 * @var callable[]
 	 */
-	private $tweakBuilders = array();
+	private $tweakBuilders = [];
 
 	public function __construct($menuEditor) {
 		parent::__construct($menuEditor);
 
-		add_action('init', array($this, 'onInit'), PHP_INT_MAX - 1000);
+		add_action('init', [$this, 'onInit'], PHP_INT_MAX - 1000);
 
 		//We need to process widgets after they've been registered (usually priority 10)
 		//but before WordPress has populated the $wp_registered_widgets global (priority 95 or 100).
-		add_action('widgets_init', array($this, 'processSidebarWidgets'), 50);
+		add_action('widgets_init', [$this, 'processSidebarWidgets'], 50);
 		//Sidebars are simpler: we can just use a really late priority.
-		add_action('widgets_init', array($this, 'processSidebars'), 1000);
+		add_action('widgets_init', [$this, 'processSidebars'], 1000);
 
 		$this->editorButtonManager = new ameTinyMceButtonManager();
 		$this->adminCssManager = new ameAdminCssTweakManager();
 		$this->gutenbergBlockManager = new ameGutenbergBlockManager($menuEditor);
 
-		$this->tweakBuilders['admin-css'] = array($this->adminCssManager, 'createTweak');
+		$this->tweakBuilders['admin-css'] = [$this->adminCssManager, 'createTweak'];
 
-		add_action('admin_menu_editor-register_hideable_items', array($this, 'registerHideableItems'), 20);
+		add_action('admin_menu_editor-register_hideable_items', [$this, 'registerHideableItems'], 20);
 		add_filter(
 			'admin_menu_editor-save_hideable_items-' . self::HIDEABLE_ITEM_COMPONENT,
-			array($this, 'saveHideableItems'),
+			[$this, 'saveHideableItems'],
 			10, 2
 		);
 	}
@@ -96,19 +99,22 @@ class ameTweakManager extends amePersistentModule {
 		$this->registerTweaks();
 
 		$tweaksToProcess = $this->pendingTweaks;
-		$this->pendingTweaks = array();
+		$this->pendingTweaks = [];
 		$this->processTweaks($tweaksToProcess);
 	}
 
 	private function registerTweaks() {
 		//We may be able to improve performance by only registering tweaks that are enabled
 		//for the current user. However, we still need to show all tweaks in the "Tweaks" tab.
+		//phpcs:disable WordPress.Security.NonceVerification.Recommended
+		//-- This is not processing form data, it's just checking which page the user is on.
 		$isTweaksTab = is_admin()
 			&& isset($_GET['page'], $_GET['sub_section'])
 			&& ($_GET['page'] === 'menu_editor')
 			&& ($_GET['sub_section'] === $this->tabSlug);
 		$isEasyHidePage = is_admin() && isset($_GET['page'])
 			&& ($_GET['page'] === 'ame-easy-hide');
+		//phpcs:enable
 
 		if ( $isTweaksTab || $isEasyHidePage ) {
 			$tweakFilter = null;
@@ -118,11 +124,11 @@ class ameTweakManager extends amePersistentModule {
 
 		$tweakData = require(__DIR__ . '/default-tweaks.php');
 
-		foreach (ameUtils::get($tweakData, 'sections', array()) as $id => $section) {
+		foreach (ameUtils::get($tweakData, 'sections', []) as $id => $section) {
 			$this->addSection($id, ameUtils::get($section, 'label', $id), ameUtils::get($section, 'priority', 10));
 		}
 
-		$defaultTweaks = ameUtils::get($tweakData, 'tweaks', array());
+		$defaultTweaks = ameUtils::get($tweakData, 'tweaks', []);
 		if ( $tweakFilter !== null ) {
 			$defaultTweaks = array_intersect_key($defaultTweaks, $tweakFilter);
 		}
@@ -147,6 +153,18 @@ class ameTweakManager extends amePersistentModule {
 				$tweak = new $className(
 					$id,
 					isset($properties['label']) ? $properties['label'] : null
+				);
+			} else if ( isset($properties['jquery-js']) ) {
+				$tweak = new ameJqueryTweak(
+					$id,
+					isset($properties['label']) ? $properties['label'] : null,
+					$properties['jquery-js']
+				);
+			} else if ( !empty($properties['isGroup']) ) {
+				$tweak = new ameDelegatedTweak(
+					$id,
+					isset($properties['label']) ? $properties['label'] : null,
+					'__return_false'
 				);
 			} else {
 				throw new LogicException('Unknown tweak type in default-tweaks.php for tweak "' . $id . '"');
@@ -173,9 +191,9 @@ class ameTweakManager extends amePersistentModule {
 
 		//Register user-defined tweaks.
 		$settings = $this->loadSettings();
-		$userDefinedTweakIds = ameUtils::get($settings, 'userDefinedTweaks', array());
+		$userDefinedTweakIds = ameUtils::get($settings, 'userDefinedTweaks', []);
 		if ( !empty($userDefinedTweakIds) ) {
-			$tweakSettings = isset($settings['tweaks']) ? $settings['tweaks'] : array();
+			$tweakSettings = isset($settings['tweaks']) ? $settings['tweaks'] : [];
 			foreach ($userDefinedTweakIds as $id => $unused) {
 				if ( !isset($tweakSettings[$id]['typeId']) ) {
 					continue;
@@ -224,13 +242,13 @@ class ameTweakManager extends amePersistentModule {
 
 			$settingsForThisTweak = null;
 			if ( $tweak->supportsUserInput() ) {
-				$settingsForThisTweak = ameUtils::get($settings, array($tweak->getId()), array());
+				$settingsForThisTweak = ameUtils::get($settings, [$tweak->getId()], []);
 			}
 			$tweak->apply($settingsForThisTweak);
 		}
 
 		if ( !empty($this->postponedTweaks) ) {
-			add_action('current_screen', array($this, 'processPostponedTweaks'), 10, 1);
+			add_action('current_screen', [$this, 'processPostponedTweaks']);
 		}
 	}
 
@@ -244,16 +262,16 @@ class ameTweakManager extends amePersistentModule {
 
 		$settings = ameUtils::get($this->loadSettings(), 'tweaks');
 		if ( !is_array($settings) ) {
-			$settings = array();
+			$settings = [];
 		}
 
 		$currentUser = wp_get_current_user();
 		$roles = $this->menuEditor->get_user_roles($currentUser);
 		$isSuperAdmin = is_multisite() && is_super_admin($currentUser->ID);
 
-		$results = array();
+		$results = [];
 		foreach ($settings as $id => $tweakSettings) {
-			$enabledForActor = ameUtils::get($tweakSettings, 'enabledForActor', array());
+			$enabledForActor = ameUtils::get($tweakSettings, 'enabledForActor', []);
 			if ( !$this->appliesToUser($enabledForActor, $currentUser, $roles, $isSuperAdmin) ) {
 				continue;
 			}
@@ -304,14 +322,14 @@ class ameTweakManager extends amePersistentModule {
 		}
 		$screenId = isset($screen, $screen->id) ? $screen->id : null;
 
-		foreach ($this->postponedTweaks as $id => $tweak) {
+		foreach ($this->postponedTweaks as $tweak) {
 			if ( !$tweak->isEnabledForScreen($screenId) ) {
 				continue;
 			}
 			$tweak->apply();
 		}
 
-		$this->postponedTweaks = array();
+		$this->postponedTweaks = [];
 	}
 
 	public function processSidebarWidgets() {
@@ -321,8 +339,8 @@ class ameTweakManager extends amePersistentModule {
 			return;
 		}
 
-		$widgetTweaks = array();
-		foreach ($wp_widget_factory->widgets as $id => $widget) {
+		$widgetTweaks = [];
+		foreach ($wp_widget_factory->widgets as $widget) {
 			$tweak = new ameHideSidebarWidgetTweak($widget);
 			$widgetTweaks[$tweak->getId()] = $tweak;
 		}
@@ -356,8 +374,8 @@ class ameTweakManager extends amePersistentModule {
 			return;
 		}
 
-		$sidebarTweaks = array();
-		foreach ($wp_registered_sidebars as $id => $sidebar) {
+		$sidebarTweaks = [];
+		foreach ($wp_registered_sidebars as $sidebar) {
 			$tweak = new ameHideSidebarTweak($sidebar);
 			$this->addTweak($tweak, self::APPLY_TWEAK_MANUALLY);
 			$sidebarTweaks[$tweak->getId()] = $tweak;
@@ -385,19 +403,19 @@ class ameTweakManager extends amePersistentModule {
 	public function enqueueTabScripts() {
 		$codeEditorSettings = null;
 		if ( function_exists('wp_enqueue_code_editor') ) {
-			$codeEditorSettings = wp_enqueue_code_editor(array('type' => 'text/html'));
+			$codeEditorSettings = wp_enqueue_code_editor(['type' => 'text/html']);
 		}
 
 		wp_register_auto_versioned_script(
 			'ame-tweak-manager',
 			plugins_url('tweak-manager.js', __FILE__),
-			array(
+			[
 				'ame-lodash',
 				'ame-knockout',
 				'ame-actor-selector',
 				'ame-jquery-cookie',
 				'ame-ko-extensions',
-			)
+			]
 		);
 		wp_enqueue_script('ame-tweak-manager');
 
@@ -416,30 +434,30 @@ class ameTweakManager extends amePersistentModule {
 
 	protected function getScriptData() {
 		$settings = $this->loadSettings();
-		$tweakSettings = ameUtils::get($settings, 'tweaks', array());
+		$tweakSettings = ameUtils::get($settings, 'tweaks', []);
 
-		$tweakData = array();
+		$tweakData = [];
 		foreach ($this->tweaks as $id => $tweak) {
 			$item = $tweak->toArray();
-			$item = array_merge(ameUtils::get($tweakSettings, $id, array()), $item);
+			$item = array_merge(ameUtils::get($tweakSettings, $id, []), $item);
 			$tweakData[] = $item;
 		}
 
-		$sectionData = array();
+		$sectionData = [];
 		foreach ($this->sections as $section) {
-			$sectionData[] = array(
+			$sectionData[] = [
 				'id'       => $section->getId(),
 				'label'    => $section->getLabel(),
 				'priority' => $section->getPriority(),
-			);
+			];
 		}
 
-		return array(
+		return [
 			'tweaks'              => $tweakData,
 			'sections'            => $sectionData,
 			'isProVersion'        => $this->menuEditor->is_pro_version(),
 			'lastUserTweakSuffix' => ameUtils::get($settings, 'lastUserTweakSuffix', 0),
-		);
+		];
 	}
 
 	public function enqueueTabStyles() {
@@ -450,21 +468,20 @@ class ameTweakManager extends amePersistentModule {
 		);
 	}
 
-	public function handleSettingsForm($post = array()) {
+	public function handleSettingsForm($post = []) {
 		parent::handleSettingsForm($post);
 
 		$submittedSettings = json_decode($post['settings'], true);
 
 		//To save space, filter out tweaks that are not enabled for anyone and have no other settings.
 		//Most tweaks only have "id" and "enabledForActor" properties.
-		$basicProperties = array('id' => true, 'enabledForActor' => true);
 		$submittedSettings['tweaks'] = array_filter(
 			$submittedSettings['tweaks'],
-			function ($settings) use ($basicProperties) {
+			function ($settings) {
 				if ( !empty($settings['enabledForActor']) ) {
 					return true;
 				}
-				$additionalProperties = array_diff_key($settings, $basicProperties);
+				$additionalProperties = array_diff_key($settings, $this::BASIC_TWEAK_PROPERTIES);
 				return !empty($additionalProperties);
 			}
 		);
@@ -482,7 +499,7 @@ class ameTweakManager extends amePersistentModule {
 
 		//Build a lookup array of user-defined tweaks so that we can register them later
 		//without iterating through the entire list.
-		$userDefinedTweakIds = array();
+		$userDefinedTweakIds = [];
 		foreach ($submittedSettings['tweaks'] as $properties) {
 			if ( !empty($properties['isUserDefined']) && !empty($properties['id']) ) {
 				$userDefinedTweakIds[$properties['id']] = true;
@@ -504,7 +521,7 @@ class ameTweakManager extends amePersistentModule {
 		$this->settings['lastUserTweakSuffix'] = $lastUserTweakSuffix;
 		$this->saveSettings();
 
-		$params = array('updated' => 1);
+		$params = ['updated' => 1];
 		if ( !empty($post['selected_actor']) ) {
 			$params['selected_actor'] = strval($post['selected_actor']);
 		}
@@ -519,21 +536,21 @@ class ameTweakManager extends amePersistentModule {
 	public function registerHideableItems($store) {
 		$settings = ameUtils::get($this->loadSettings(), 'tweaks');
 
-		$enabledSections = array(
+		$enabledSections = [
 			ameGutenbergBlockManager::SECTION_ID => 'Gutenberg Blocks',
 			ameTinyMceButtonManager::SECTION_ID  => 'TinyMCE Buttons',
 			'profile'                            => null,
 			'sidebar-widgets'                    => null,
 			'sidebars'                           => null,
-		);
+		];
 
 		$postEditorCategory = $store->getOrCreateCategory('post-editor', 'Editor', null, false, 0, 0);
-		$parentCategories = array(
+		$parentCategories = [
 			ameGutenbergBlockManager::SECTION_ID => $postEditorCategory,
 			ameTinyMceButtonManager::SECTION_ID  => $postEditorCategory,
-		);
+		];
 
-		$categoriesBySection = array();
+		$categoriesBySection = [];
 		foreach ($enabledSections as $sectionId => $customLabel) {
 			if ( !isset($this->sections[$sectionId]) ) {
 				continue;
@@ -575,10 +592,10 @@ class ameTweakManager extends amePersistentModule {
 				$parent = null;
 			}
 
-			$enabled = ameUtils::get($settings, array($tweak->getId(), 'enabledForActor'), array());
+			$enabled = ameUtils::get($settings, [$tweak->getId(), 'enabledForActor'], []);
 			$inverted = null;
 
-			$categories = array();
+			$categories = [];
 			if ( $sectionCategoryExists ) {
 				$categories[] = $categoriesBySection[$tweak->getSectionId()];
 			}
@@ -589,7 +606,7 @@ class ameTweakManager extends amePersistentModule {
 					$categories[] = $customCategory;
 					//Tweak state should not be inverted, so if the category does that,
 					//we'll need to override that setting.
-					if ($customCategory->isInvertingItemState()) {
+					if ( $customCategory->isInvertingItemState() ) {
 						$inverted = false;
 					}
 				}
@@ -613,20 +630,20 @@ class ameTweakManager extends amePersistentModule {
 	}
 
 	public function saveHideableItems($errors, $items) {
-		$tweakSettings = ameUtils::get($this->loadSettings(), 'tweaks', array());
+		$tweakSettings = ameUtils::get($this->loadSettings(), 'tweaks', []);
 		$prefixLength = strlen(self::HIDEABLE_ITEM_PREFIX);
 		$anyTweaksModified = false;
 
 		foreach ($items as $id => $item) {
 			$tweakId = substr($id, $prefixLength);
 
-			$enabled = isset($item['enabled']) ? $item['enabled'] : array();
-			$oldEnabled = ameUtils::get($tweakSettings, array($tweakId, 'enabledForActor'), array());
+			$enabled = isset($item['enabled']) ? $item['enabled'] : [];
+			$oldEnabled = ameUtils::get($tweakSettings, [$tweakId, 'enabledForActor'], []);
 
 			if ( !ameUtils::areAssocArraysEqual($enabled, $oldEnabled) ) {
 				if ( !empty($enabled) ) {
 					if ( !isset($tweakSettings[$tweakId]) ) {
-						$tweakSettings[$tweakId] = array();
+						$tweakSettings[$tweakId] = [];
 					}
 					$tweakSettings[$tweakId]['enabledForActor'] = $enabled;
 				} else {

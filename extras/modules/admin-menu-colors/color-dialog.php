@@ -10,7 +10,7 @@
 
 	<div class="ws_dialog_buttons">
 		<?php
-		submit_button('Save Changes', 'primary', 'ws-ame-mc-save-menu-colors', false, [
+		submit_button('OK', 'primary', 'ws-ame-mc-save-menu-colors', false, [
 			'data-bind' => 'click: onConfirmDialog.bind($data)',
 		]);
 		?>

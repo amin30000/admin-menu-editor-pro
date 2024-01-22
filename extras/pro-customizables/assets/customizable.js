@@ -338,7 +338,7 @@ export var AmeCustomizable;
             this.children = children;
         }
         getComponentParams() {
-            return Object.assign(Object.assign({}, this.componentParams), { uiElement: this, description: this.description, classes: this.classes, styles: this.styles, children: this.children });
+            return Object.assign(Object.assign({}, this.componentParams), { uiElement: this, id: this.id, description: this.description, classes: this.classes, styles: this.styles, children: this.children });
         }
     }
     AmeCustomizable.UiElement = UiElement;

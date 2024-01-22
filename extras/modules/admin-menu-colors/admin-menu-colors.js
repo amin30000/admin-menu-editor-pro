@@ -245,6 +245,7 @@ jQuery(function ($) {
             //Save the presets.
             AmeEditorApi.configDataAdapter.setPath(['color_presets'], presetCollection);
             this.closeDialog();
+            $(document).trigger('adminMenuEditor:menuConfigChanged');
         }
         areObjectsEqual(a, b) {
             let keysA = Object.keys(a);
@@ -355,7 +356,7 @@ jQuery(function ($) {
             //Otherwise, do not select any preset.
             const colorPresets = AmeEditorApi.configDataAdapter.getPath(['color_presets']);
             const $dropdown = this.$dialog.find('.ame-mc-preset-dropdown').first();
-            if (!this.currentItemColors && (typeof colorPresets['[global]'] !== 'undefined')) {
+            if (!this.currentItemColors && colorPresets && (typeof colorPresets['[global]'] !== 'undefined')) {
                 $dropdown.val('[global]');
             }
             else {
