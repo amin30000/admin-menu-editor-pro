@@ -2434,6 +2434,13 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 			'isAlwaysActive'     => true,
 		);
 
+		$modules['hide-others-posts'] = array(
+			'path'       => AME_ROOT_DIR . '/extras/modules/hide-others-posts/hide-others-posts.php',
+			'className'          => 'ameOtherUserPostHider',
+			'title'              => 'Hide others\' posts',
+			'requiredPhpVersion' => '7.4',
+		);
+
 		if (defined('AME_CUSTOMIZABLE_DEV') && AME_CUSTOMIZABLE_DEV) {
 			$modules['sample-module'] = [
 				'path'               => AME_ROOT_DIR . '/customizables/SampleModule.php',
@@ -2464,7 +2471,6 @@ if ( !defined('IS_DEMO_MODE') && !defined('IS_MASTER_MODE') ) {
 
 //Load the custom update checker (requires PHP 5)
 if ( (version_compare(PHP_VERSION, '5.0.0', '>=')) && isset($wp_menu_editor) ){
-	require dirname(__FILE__) . '/plugin-updates/plugin-update-checker.php';
 	$ameProUpdateChecker = PucFactory::buildUpdateChecker(
 		'https://adminmenueditor.com/?get_metadata_for=admin-menu-editor-pro',
 		$wp_menu_editor->plugin_file, //Note: This variable is set in the framework constructor

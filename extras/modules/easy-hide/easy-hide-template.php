@@ -147,6 +147,10 @@ printf(
 							       data-bind="checked: isChecked,
 							       indeterminate: isIndeterminate">
 							<span data-bind="text: label"></span>
+							<!-- ko if: tooltip -->
+							<span class="dashicons dashicons-editor-help ame-eh-category-tooltip"
+							      data-bind="attr: {'title': tooltip}"></span>
+							<!-- /ko -->
 						</label>
 					</h3>
 

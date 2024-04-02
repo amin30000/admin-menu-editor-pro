@@ -9,16 +9,17 @@
 //Show errors encountered while saving changes.
 if (!empty($settingsErrors)) {
 	echo '<div class="notice notice-error">';
-	foreach ($settingsErrors as $error) {
-		/** @var WP_Error $error */
-		if (!($error instanceof WP_Error)) {
+	foreach ($settingsErrors as $saveError) {
+		/** @var WP_Error $saveError */
+		if (!($saveError instanceof WP_Error)) {
 			continue;
 		}
-		printf('<p title="%s">%s</p>', esc_attr($error->get_error_code()), esc_html($error->get_error_message()));
+		printf('<p title="%s">%s</p>', esc_attr($saveError->get_error_code()), esc_html($saveError->get_error_message()));
 	}
 	echo '</div>';
 }
 
+//phpcs:ignore WordPress.Security.NonceVerification.Recommended -- It's a simple flag for a status message, no need to verify.
 if (!empty($_GET['no-changes-made'])) {
 	?>
 	<div class="notice notice-info is-dismissible" id="ame-rex-no-changes">
@@ -78,7 +79,8 @@ require AME_ROOT_DIR . '/modules/actor-selector/actor-selector-template.php';
 			</div>
 		</div>
 
-		<div id="rex-action-sidebar">
+		<div id="rex-action-sidebar" class="metabox-holder">
+			<div id="rex-main-buttons" class="postbox ws-ame-postbox">
 			<?php
 			if (is_multisite() && is_super_admin() && is_network_admin()) {
 				submit_button(
@@ -176,6 +178,22 @@ require AME_ROOT_DIR . '/modules/actor-selector/actor-selector-template.php';
 			</form>
 		</div>
 
+			<?php
+			$relatedWidgetContent = trim(apply_filters('admin_menu_editor-rex_related_widget', ''));
+			if ( !empty($relatedWidgetContent) ): ?>
+				<div id="rex-related-widget" class="postbox ws-ame-postbox">
+					<div class="postbox-header ws-ame-postbox-header">
+						<h2 class="hndle">Related</h2>
+					</div>
+					<div class="inside ws-ame-postbox-content">
+						<?php
+						//The code using the filter is responsible for escaping the content.
+						//phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+						echo $relatedWidgetContent;
+						?>
+					</div>
+				</div>
+			<?php endif; ?>
 	</div>
 
 	<div id="rex-category-list-options" class="rex-dropdown" style="display: none;">
@@ -667,7 +685,7 @@ require AME_ROOT_DIR . '/modules/actor-selector/actor-selector-template.php';
 						       name="editable-roles-behaviour">
 						Automatic
 						<br><span class="description">
-							Only allows to assign the roles that have the same or fewer capabilities.
+							Only allows to assign the roles that have the same or fewer core capabilities.
 						</span>
 					</label></p>
 				<p><label>

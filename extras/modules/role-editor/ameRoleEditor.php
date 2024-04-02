@@ -25,28 +25,28 @@ class ameRoleEditor extends amePersistentProModule {
 	/**
 	 * @var ameRexCapability[]
 	 */
-	private $capabilities = array();
+	private $capabilities = [];
 	/**
 	 * @var array
 	 */
-	private $uncategorizedCapabilities = array();
+	private $uncategorizedCapabilities = [];
 
 	/**
 	 * @var ameRexComponentRegistry
 	 */
 	private $knownComponents;
-	private $postTypeRegistrants = array();
-	private $taxonomyRegistrants = array();
+	private $postTypeRegistrants = [];
+	private $taxonomyRegistrants = [];
 
 	/**
 	 * @var ameRexCategory[]
 	 */
-	private $componentRootCategories = array();
+	private $componentRootCategories = [];
 
 	/**
 	 * @var ameRexCategory[]
 	 */
-	private $componentCapPrefixes = array();
+	private $componentCapPrefixes = [];
 
 	/**
 	 * @var string Name of the table that stores role data backups.
@@ -60,16 +60,16 @@ class ameRoleEditor extends amePersistentProModule {
 	/**
 	 * @var array List of errors encountered when saving role settings.
 	 */
-	private $cachedSettingsErrors = array();
+	private $cachedSettingsErrors = [];
 
 	/**
 	 * @var ameEditableRoleFilter[] Editable roles per user. [userId => $filterInstance]
 	 */
-	private $cachedEditableRoles = array();
+	private $cachedEditableRoles = [];
 	/**
 	 * @var string[] Overall, most specific strategy per user. [123 => 'auto', 456 => 'user-defined-list', ...]
 	 */
-	private $cachedOverallEditableRoleStrategy = array();
+	private $cachedOverallEditableRoleStrategy = [];
 	/**
 	 * @var bool Is the hook that clears the role cache already installed?
 	 */
@@ -77,27 +77,27 @@ class ameRoleEditor extends amePersistentProModule {
 	/**
 	 * @var array
 	 */
-	private $cachedEnabledRoleCaps = array();
+	private $cachedEnabledRoleCaps = [];
 
 	public function __construct($menuEditor) {
 		$this->settingsWrapperEnabled = true;
 		parent::__construct($menuEditor);
 
-		add_filter('editable_roles', array($this, 'filterEditableRoles'), 20, 1);
-		add_filter('map_meta_cap', array($this, 'restrictUserEditing'), 10, 4);
+		add_filter('editable_roles', [$this, 'filterEditableRoles'], 20, 1);
+		add_filter('map_meta_cap', [$this, 'restrictUserEditing'], 10, 4);
 
 		//Optimization: Only record plugins that register post types and taxonomies when the current page is an AME tab.
-		if (isset($_GET['sub_section'])) {
-			add_action('registered_post_type', array($this, 'recordPostTypeOrigin'), 10, 2);
-			add_action('registered_taxonomy', array($this, 'recordTaxonomyOrigin'), 10, 3);
+		if ( isset($_GET['sub_section']) ) {
+			add_action('registered_post_type', [$this, 'recordPostTypeOrigin'], 10, 2);
+			add_action('registered_taxonomy', [$this, 'recordTaxonomyOrigin'], 10, 3);
 		}
 
-		add_action('wp_ajax_' . self::UPDATE_PREFERENCES_ACTION, array($this, 'ajaxUpdateUserPreferences'));
+		add_action('wp_ajax_' . self::UPDATE_PREFERENCES_ACTION, [$this, 'ajaxUpdateUserPreferences']);
 
 		/** @var wpdb */
 		global $wpdb;
 		$this->backupTable = $wpdb->base_prefix . 'ame_role_backups';
-		add_action(self::BACKUP_CLEANUP_HOOK, array($this, 'deleteOldRoleBackups'));
+		add_action(self::BACKUP_CLEANUP_HOOK, [$this, 'deleteOldRoleBackups']);
 	}
 
 	public function enqueueTabScripts() {
@@ -106,7 +106,7 @@ class ameRoleEditor extends amePersistentProModule {
 		wp_register_auto_versioned_script(
 			'ame-role-editor',
 			plugins_url('role-editor.js', __FILE__),
-			array(
+			[
 				'ame-lodash',
 				'ame-knockout',
 				'jquery',
@@ -114,7 +114,7 @@ class ameRoleEditor extends amePersistentProModule {
 				'ame-actor-manager',
 				'ame-actor-selector',
 				'ame-ko-extensions',
-			)
+			]
 		);
 
 		wp_enqueue_script('ame-role-editor');
@@ -125,9 +125,9 @@ class ameRoleEditor extends amePersistentProModule {
 		$defaultCapabilities = $this->getDefaultCapabilities();
 		$multisiteCapabilities = $this->getMultisiteOnlyCapabilities();
 
-		foreach ($this->getAllCapabilities(array(wp_get_current_user())) as $capability => $unusedValue) {
+		foreach ($this->getAllCapabilities([wp_get_current_user()]) as $capability => $unusedValue) {
 			$descriptor = new ameRexCapability();
-			if (isset($defaultCapabilities[$capability]) || isset($multisiteCapabilities[$capability])) {
+			if ( isset($defaultCapabilities[$capability]) || isset($multisiteCapabilities[$capability]) ) {
 				$descriptor->componentId = self::CORE_COMPONENT_ID;
 			} else {
 				$this->uncategorizedCapabilities[$capability] = true;
@@ -157,10 +157,10 @@ class ameRoleEditor extends amePersistentProModule {
 		foreach ($this->componentRootCategories as $category) {
 			//Find component roots that have both subcategories and capabilities and
 			//put all freestanding capabilities in a "General" subcategory.
-			if (!empty($category->capabilities) && !empty($category->subcategories)) {
+			if ( !empty($category->capabilities) && !empty($category->subcategories) ) {
 				$generalCategory = new ameRexCategory('General', $category->componentId);
 				$generalCategory->capabilities = $category->capabilities;
-				$category->capabilities = array();
+				$category->capabilities = [];
 				array_unshift($category->subcategories, $generalCategory);
 			}
 		}
@@ -170,10 +170,10 @@ class ameRoleEditor extends amePersistentProModule {
 		//Normally, only a Super Admin on Multisite has certain Multisite administration capabilities.
 		//However, there is at least one plugin that uses these capabilities even in a regular WP install,
 		//so we'll show them as long as they're assigned to at least one role or user.
-		if (!is_multisite() && isset($coreCategory->subcategories['default/multisite'])) {
+		if ( !is_multisite() && isset($coreCategory->subcategories['default/multisite']) ) {
 			$multisiteCategory = $coreCategory->subcategories['default/multisite'];
 			$multisiteCategory->capabilities = array_intersect_key($multisiteCategory->capabilities, $this->capabilities);
-			if (empty($multisiteCategory->capabilities)) {
+			if ( empty($multisiteCategory->capabilities) ) {
 				unset($coreCategory->subcategories['default/multisite']);
 			}
 		}
@@ -190,46 +190,46 @@ class ameRoleEditor extends amePersistentProModule {
 		//exit;
 
 		$customCategories = array_merge($this->componentRootCategories, $probablePostTypeCategories, $clusteredCategories);
-		$customCategoryDescriptors = array();
+		$customCategoryDescriptors = [];
 		foreach ($customCategories as $category) {
 			/** @var ameRexCategory $category */
 			$customCategoryDescriptors[] = $category->toArray();
 		}
 
-		$components = array();
+		$components = [];
 		foreach ($this->knownComponents as $id => $component) {
 			$components[$id] = $component->toArray();
 		}
 
 		$stableMetaCaps = self::loadCapabilities('stable-meta-caps.txt');
-		$metaCapMap = array();
+		$metaCapMap = [];
 		$currentUserId = get_current_user_id();
 		foreach ($stableMetaCaps as $metaCap => $unused) {
 			$primitiveCaps = map_meta_cap($metaCap, $currentUserId);
-			if ((count($primitiveCaps) === 1) && !in_array('do_not_allow', $primitiveCaps)) {
+			if ( (count($primitiveCaps) === 1) && !in_array('do_not_allow', $primitiveCaps) ) {
 				$targetCap = reset($primitiveCaps);
-				if ($targetCap !== $metaCap) {
+				if ( $targetCap !== $metaCap ) {
 					$metaCapMap[$metaCap] = $targetCap;
 				}
 			}
 		}
 
-		$userPreferences = array();
+		$userPreferences = [];
 		$userPreferenceData = get_user_meta(get_current_user_id(), self::USER_PREFERENCE_KEY, true);
-		if (is_string($userPreferenceData) && !empty($userPreferenceData)) {
+		if ( is_string($userPreferenceData) && !empty($userPreferenceData) ) {
 			$userPreferences = json_decode($userPreferenceData, true);
-			if (!is_array($userPreferences)) {
-				$userPreferences = array();
+			if ( !is_array($userPreferences) ) {
+				$userPreferences = [];
 			}
 		}
 
 		$query = $this->menuEditor->get_query_params();
 		$selectedActor = null;
-		if (isset($query['selected_actor'])) {
+		if ( isset($query['selected_actor']) ) {
 			$selectedActor = strval($query['selected_actor']);
 		}
 
-		$scriptData = array(
+		$scriptData = [
 			'coreCategory'              => $coreCategory->toArray(),
 			'customCategories'          => $customCategoryDescriptors,
 			'postTypes'                 => $postTypes,
@@ -241,16 +241,16 @@ class ameRoleEditor extends amePersistentProModule {
 			'knownComponents'           => $components,
 			'metaCapMap'                => $metaCapMap,
 			'roles'                     => $this->getRoleData(),
-			'users'                     => array(),
+			'users'                     => [],
 			'defaultRoleName'           => get_option('default_role'),
-			'trashedRoles'              => array(), //todo: Load trashed roles from somewhere.
+			'trashedRoles'              => [], //todo: Load trashed roles from somewhere.
 			'selectedActor'             => $selectedActor,
 			'editableRoles'             => ameUtils::get($this->loadSettings(), 'editableRoles', new stdClass()),
 
 			'userPreferences'        => $userPreferences,
 			'adminAjaxUrl'           => self_admin_url('admin-ajax.php'),
 			'updatePreferencesNonce' => wp_create_nonce(self::UPDATE_PREFERENCES_ACTION),
-		);
+		];
 
 		$jsonData = wp_json_encode($scriptData);
 
@@ -289,20 +289,20 @@ class ameRoleEditor extends amePersistentProModule {
 	}
 
 	public function displaySettingsPage() {
-		if (!$this->userCanAccessModule()) {
+		if ( !$this->userCanAccessModule() ) {
 			echo 'Error: You don\'t have sufficient permissions to access these settings.';
 			return;
 		}
 
-		if ($this->backupsEnabled && !wp_next_scheduled(self::BACKUP_CLEANUP_HOOK)) {
+		if ( $this->backupsEnabled && !wp_next_scheduled(self::BACKUP_CLEANUP_HOOK) ) {
 			wp_schedule_event(time() + 10 * 60, 'daily', self::BACKUP_CLEANUP_HOOK);
 		}
 		parent::displaySettingsPage();
 	}
 
 	private function getPostTypeDescriptors() {
-		$results = array();
-		$wpPostTypes = get_post_types(array(), 'objects');
+		$results = [];
+		$wpPostTypes = get_post_types([], 'objects');
 
 		//Note: When the "map_meta_cap" option is disabled for a CPT, the values of the "cap"
 		//object will be treated as primitive capabilities. For example, "read_post" => "read_post"
@@ -314,14 +314,14 @@ class ameRoleEditor extends amePersistentProModule {
 		//These three meta capabilities will always be mapped to something else if "map_meta_cap"
 		//is enabled. We'll skip them unless mapping is off or someone has assigned them to a role.
 		//Note: It's possible that it would be fine to skip them even then. Not sure.
-		$metaCaps = array('edit_post', 'read_post', 'delete_post');
+		$metaCaps = ['edit_post', 'read_post', 'delete_post'];
 
 		foreach ($wpPostTypes as $name => $postType) {
 			$isIncluded = $postType->public || !$postType->_builtin;
 
 			//Skip the "attachment" post type. It only has one unique capability (upload_files), which
 			//is included in a default group.
-			if ($name === 'attachment') {
+			if ( $name === 'attachment' ) {
 				$isIncluded = false;
 			}
 
@@ -332,37 +332,37 @@ class ameRoleEditor extends amePersistentProModule {
 				}
 			}
 
-			if (!$isIncluded) {
+			if ( !$isIncluded ) {
 				continue;
 			}
 
 			$label = $name;
 			$pluralLabel = $name;
-			if (isset($postType->labels, $postType->labels->name) && !empty($postType->labels->name)) {
+			if ( isset($postType->labels, $postType->labels->name) && !empty($postType->labels->name) ) {
 				$label = $postType->labels->name;
 				$pluralLabel = $postType->labels->name;
 			}
 
 			//We want the plural in lowercase, but if there are multiple consecutive uppercase letters
 			//then it's probably an acronym. Stuff like "aBc" is probably a contraction or a proper noun.
-			if (!preg_match('@([A-Z]{2}|[a-z][A-Z])@', $pluralLabel)) {
+			if ( !preg_match('@([A-Z]{2}|[a-z][A-Z])@', $pluralLabel) ) {
 				$pluralLabel = strtolower($pluralLabel);
 			}
 
-			$capabilities = array();
+			$capabilities = [];
 			foreach ((array)$postType->cap as $capType => $capability) {
 				//Skip meta caps unless they already exist.
-				if (in_array($capType, $metaCaps) && ($postType->map_meta_cap || !isset($this->capabilities[$capability]))) {
+				if ( in_array($capType, $metaCaps) && ($postType->map_meta_cap || !isset($this->capabilities[$capability])) ) {
 					continue;
 				}
 
 				//Skip the "read" cap. It's redundant - most CPTs use it, and all roles have it by default.
-				if (($capType === 'read') && ($capability === 'read')) {
+				if ( ($capType === 'read') && ($capability === 'read') ) {
 					continue;
 				}
 
 				//Some plugins apparently set capability to "false". Perhaps the intention is to disable it.
-				if ($capability === false) {
+				if ( $capability === false ) {
 					continue;
 				}
 
@@ -371,14 +371,14 @@ class ameRoleEditor extends amePersistentProModule {
 
 			$component = isset($this->postTypeRegistrants[$name]) ? $this->postTypeRegistrants[$name] : null;
 
-			$descriptor = array(
+			$descriptor = [
 				'label'       => $label,
 				'name'        => $name,
 				'pluralLabel' => $pluralLabel,
 				'permissions' => $capabilities,
 				'isDefault'   => isset($postType->_builtin) && $postType->_builtin,
 				'componentId' => $component,
-			);
+			];
 
 			$results[$name] = $descriptor;
 		}
@@ -387,10 +387,10 @@ class ameRoleEditor extends amePersistentProModule {
 	}
 
 	protected function findRegisteredTaxonomies() {
-		$registeredTaxonomies = array();
-		$usedLabels = array('Categories' => true, 'Category' => true, 'Tags' => true);
+		$registeredTaxonomies = [];
+		$usedLabels = ['Categories' => true, 'Category' => true, 'Tags' => true];
 
-		foreach (get_taxonomies(array(), 'object') as $taxonomy) {
+		foreach (get_taxonomies([], 'object') as $taxonomy) {
 			$permissions = (array)($taxonomy->cap);
 
 			//Skip "link_category" because its only cap (manage_links) is already part of a default category.
@@ -404,40 +404,40 @@ class ameRoleEditor extends amePersistentProModule {
 
 			//Skip "nav_menu" and "post_format" because they're intended for internal use and have the same
 			//caps as the "Category" taxonomy.
-			if (in_array($taxonomy->name, array('nav_menu', 'post_format')) && $taxonomy->_builtin) {
+			if ( in_array($taxonomy->name, ['nav_menu', 'post_format']) && $taxonomy->_builtin ) {
 				continue;
 			}
 
 			$componentId = null;
 			$isBuiltIn = isset($taxonomy->_builtin) && $taxonomy->_builtin;
-			if ($isBuiltIn) {
+			if ( $isBuiltIn ) {
 				$componentId = self::CORE_COMPONENT_ID;
-			} else if (isset($this->taxonomyRegistrants[$taxonomy->name])) {
+			} else if ( isset($this->taxonomyRegistrants[$taxonomy->name]) ) {
 				$componentId = $this->taxonomyRegistrants[$taxonomy->name];
 			}
 
 			$label = $taxonomy->name;
-			if (isset($taxonomy->labels, $taxonomy->labels->name) && !empty($taxonomy->labels->name)) {
+			if ( isset($taxonomy->labels, $taxonomy->labels->name) && !empty($taxonomy->labels->name) ) {
 				$label = $taxonomy->labels->name;
 			}
 
 			$uniqueLabel = $label;
-			if (isset($usedLabels[$uniqueLabel]) && !$isBuiltIn) {
+			if ( isset($usedLabels[$uniqueLabel]) && !$isBuiltIn ) {
 				$uniqueLabel = str_replace('_', ' ', $taxonomy->name);
 			}
 			//We want the label in lowercase unless it's an acronym.
-			if (!preg_match('@([A-Z]{2}|[a-z][A-Z])@', $uniqueLabel)) {
+			if ( !preg_match('@([A-Z]{2}|[a-z][A-Z])@', $uniqueLabel) ) {
 				$uniqueLabel = strtolower($uniqueLabel);
 			}
 			$usedLabels[$uniqueLabel] = true;
 
-			$registeredTaxonomies[$taxonomy->name] = array(
+			$registeredTaxonomies[$taxonomy->name] = [
 				'name'        => $taxonomy->name,
 				'label'       => $label,
 				'pluralLabel' => $uniqueLabel,
 				'componentId' => $componentId,
 				'permissions' => $permissions,
-			);
+			];
 
 		}
 
@@ -447,20 +447,20 @@ class ameRoleEditor extends amePersistentProModule {
 	protected function analysePostTypes($postTypes) {
 		//Record which components use which CPT capabilities.
 		foreach ($postTypes as $name => $postType) {
-			if (empty($postType['componentId']) || !isset($this->knownComponents[$postType['componentId']])) {
+			if ( empty($postType['componentId']) || !isset($this->knownComponents[$postType['componentId']]) ) {
 				continue;
 			}
 			$this->knownComponents[$postType['componentId']]->registeredPostTypes[$name] = true;
 			foreach ($postType['permissions'] as $action => $capability) {
-				if (isset($this->capabilities[$capability])) {
+				if ( isset($this->capabilities[$capability]) ) {
 					$this->capabilities[$capability]->addUsage($postType['componentId']);
 				}
 			}
 
 			//Add a CPT category to the component that created this post type.
-			if (empty($postType['isDefault']) && ($postType['componentId'] !== self::CORE_COMPONENT_ID)) {
+			if ( empty($postType['isDefault']) && ($postType['componentId'] !== self::CORE_COMPONENT_ID) ) {
 				$componentRoot = $this->getComponentCategory($postType['componentId']);
-				if ($componentRoot) {
+				if ( $componentRoot ) {
 					$category = new ameRexPostTypeCategory(
 						$postType['label'],
 						$postType['componentId'],
@@ -476,19 +476,19 @@ class ameRoleEditor extends amePersistentProModule {
 	protected function analyseTaxonomies($taxonomies) {
 		//Record taxonomy components and create taxonomy categories for those components.
 		foreach ($taxonomies as $name => $taxonomy) {
-			if (empty($taxonomy['componentId'])) {
+			if ( empty($taxonomy['componentId']) ) {
 				continue;
 			}
 			foreach ($taxonomy['permissions'] as $action => $capability) {
-				if (isset($this->capabilities[$capability])) {
+				if ( isset($this->capabilities[$capability]) ) {
 					$this->capabilities[$capability]->addUsage($taxonomy['componentId']);
 				}
 			}
 
 			//Add a taxonomy category to the component that created this taxonomy.
-			if ($taxonomy['componentId'] !== self::CORE_COMPONENT_ID) {
+			if ( $taxonomy['componentId'] !== self::CORE_COMPONENT_ID ) {
 				$componentRoot = $this->getComponentCategory($taxonomy['componentId']);
-				if ($componentRoot) {
+				if ( $componentRoot ) {
 					$category = new ameRexTaxonomyCategory(
 						$taxonomy['label'],
 						$taxonomy['componentId'],
@@ -510,31 +510,31 @@ class ameRoleEditor extends amePersistentProModule {
 		foreach ($this->capabilities as $capability => $unusedValue) {
 			$details = $this->capabilities[$capability];
 
-			if (empty($details->componentId) && !empty($details->usedByComponents)) {
+			if ( empty($details->componentId) && !empty($details->usedByComponents) ) {
 				//Sort related components by priority.
-				if (count($details->usedByComponents) > 1) {
-					uksort($details->usedByComponents, array($this, 'compareComponents'));
+				if ( count($details->usedByComponents) > 1 ) {
+					uksort($details->usedByComponents, [$this, 'compareComponents']);
 				}
 				//Pick the first component.
 				$details->componentId = key($details->usedByComponents);
 			}
 
-			if (!empty($details->componentId)) {
+			if ( !empty($details->componentId) ) {
 				//Copy context information that's relevant to the selected component.
-				if (isset($details->componentContext[$details->componentId])) {
-					$propertiesToCopy = array('permissions', 'documentationUrl', 'notes');
+				if ( isset($details->componentContext[$details->componentId]) ) {
+					$propertiesToCopy = ['permissions', 'documentationUrl', 'notes'];
 					foreach ($propertiesToCopy as $property) {
-						if (isset($details->componentContext[$details->componentId][$property])) {
+						if ( isset($details->componentContext[$details->componentId][$property]) ) {
 							$details->$property = $details->componentContext[$details->componentId][$property];
 						}
 					}
 				}
 
-				if ($details->componentId !== self::CORE_COMPONENT_ID) {
+				if ( $details->componentId !== self::CORE_COMPONENT_ID ) {
 					//Add the capability to the component category unless it's already there.
 					$category = $this->getComponentCategory($details->componentId);
-					if ($category !== null) {
-						if (!$category->hasCapability($capability)) {
+					if ( $category !== null ) {
+						if ( !$category->hasCapability($capability) ) {
 							$category->capabilities[$capability] = true;
 						}
 						unset($this->uncategorizedCapabilities[$capability]);
@@ -573,23 +573,23 @@ class ameRoleEditor extends amePersistentProModule {
 
 			//Skip blank lines.
 			$line = rtrim($line);
-			if ($line === '') {
+			if ( $line === '' ) {
 				continue;
 			}
 
 			$firstChar = substr($line, 0, 1);
-			if ($firstChar === ' ' || $firstChar === "\t") {
+			if ( $firstChar === ' ' || $firstChar === "\t" ) {
 				//Found a capability.
 				$capability = trim($line);
 				//Skip unassigned caps. Even core capabilities sometimes get removed as WP development continues.
-				if (isset($this->capabilities[$capability])) {
+				if ( isset($this->capabilities[$capability]) ) {
 					$currentCategory->capabilities[$capability] = true;
 				}
 			} else {
 				//Found a "Category title [optional slug]"
-				if (preg_match('@^(?P<title>[^\[]+)(?:\s+\[(?P<slug>[^]]+)])?\s*$@', $line, $matches)) {
+				if ( preg_match('@^(?P<title>[^\[]+)(?:\s+\[(?P<slug>[^]]+)])?\s*$@', $line, $matches) ) {
 					//Save the previous category if it matched any capabilities.
-					if (count($currentCategory->capabilities) > 0) {
+					if ( count($currentCategory->capabilities) > 0 ) {
 						$root->addSubcategory($currentCategory);
 					}
 
@@ -603,7 +603,7 @@ class ameRoleEditor extends amePersistentProModule {
 		}
 
 		//Save the last category.
-		if (count($currentCategory->capabilities) > 0) {
+		if ( count($currentCategory->capabilities) > 0 ) {
 			$root->addSubcategory($currentCategory);
 		}
 
@@ -612,7 +612,7 @@ class ameRoleEditor extends amePersistentProModule {
 
 	protected function analyseAdminMenuCapabilities() {
 		$menu = $this->menuEditor->get_active_admin_menu();
-		if (!empty($menu['tree'])) {
+		if ( !empty($menu['tree']) ) {
 			foreach ($menu['tree'] as $item) {
 				$this->analyseMenuItem($item);
 			}
@@ -620,38 +620,38 @@ class ameRoleEditor extends amePersistentProModule {
 	}
 
 	protected function analyseMenuItem($item, $parent = null) {
-		$capability = ameUtils::get($item, array('defaults', 'access_level'));
+		$capability = ameUtils::get($item, ['defaults', 'access_level']);
 
-		if (empty($item['custom']) && !empty($item['defaults']) && !empty($capability) && empty($item['separator'])) {
+		if ( empty($item['custom']) && !empty($item['defaults']) && !empty($capability) && empty($item['separator']) ) {
 			$defaults = $item['defaults'];
 			$hook = get_plugin_page_hook(ameUtils::get($defaults, 'file', ''), ameUtils::get($defaults, 'parent', ''));
 
 			$rawTitle = ameMenuItem::get($item, 'menu_title', '[Untitled]');
 			$fullTitle = trim(strip_tags(ameMenuItem::remove_update_count($rawTitle)));
-			if ($parent) {
+			if ( $parent ) {
 				$parentTitle = ameMenuItem::remove_update_count(ameMenuItem::get($parent, 'menu_title', '[Untitled]'));
 				$fullTitle = trim(strip_tags($parentTitle)) . ' → ' . $fullTitle;
 			}
 
-			$relatedComponents = array();
-			if (!empty($hook)) {
+			$relatedComponents = [];
+			if ( !empty($hook) ) {
 				$reflections = $this->getHookReflections($hook);
 				foreach ($reflections as $reflection) {
 					$path = $reflection->getFileName();
 					$componentId = $this->getComponentIdFromPath($path);
-					if ($componentId) {
+					if ( $componentId ) {
 						$relatedComponents[$this->getComponentIdFromPath($path)] = true;
 					}
 				}
 			}
 
-			if (isset($this->capabilities[$capability])) {
+			if ( isset($this->capabilities[$capability]) ) {
 				$this->capabilities[$capability]->menuItems[] = $fullTitle;
 				$this->capabilities[$capability]->addManyUsages($relatedComponents);
 			}
 		}
 
-		if (!empty($item['items'])) {
+		if ( !empty($item['items']) ) {
 			foreach ($item['items'] as $submenu) {
 				$this->analyseMenuItem($submenu, $item);
 			}
@@ -664,11 +664,11 @@ class ameRoleEditor extends amePersistentProModule {
 	 */
 	protected function getHookReflections($tag) {
 		global $wp_filter;
-		if (!isset($wp_filter[$tag])) {
-			return array();
+		if ( !isset($wp_filter[$tag]) ) {
+			return [];
 		}
 
-		$reflections = array();
+		$reflections = [];
 		foreach ($wp_filter[$tag] as $priority => $handlers) {
 			foreach ($handlers as $index => $callback) {
 				try {
@@ -685,29 +685,33 @@ class ameRoleEditor extends amePersistentProModule {
 
 	protected function getComponentIdFromPath($absolutePath) {
 		static $pluginDirectory = null, $muPluginDirectory = null, $themeDirectory = null;
-		if ($pluginDirectory === null) {
+		if ( $pluginDirectory === null ) {
 			$pluginDirectory = wp_normalize_path(WP_PLUGIN_DIR);
 			$muPluginDirectory = wp_normalize_path(WPMU_PLUGIN_DIR);
 			$themeDirectory = wp_normalize_path(WP_CONTENT_DIR . '/themes');
 		}
 
 		$absolutePath = wp_normalize_path($absolutePath);
+		if ( empty($absolutePath) ) {
+			return null;
+		}
+
 		$pos = null;
 		$type = '';
-		if (strpos($absolutePath, $pluginDirectory) === 0) {
+		if ( strpos($absolutePath, $pluginDirectory) === 0 ) {
 			$type = 'plugin';
 			$pos = strlen($pluginDirectory);
-		} else if (strpos($absolutePath, $muPluginDirectory) === 0) {
+		} else if ( !empty($muPluginDirectory) && (strpos($absolutePath, $muPluginDirectory) === 0) ) {
 			$type = 'mu-plugin';
 			$pos = strlen($muPluginDirectory);
-		} else if (strpos($absolutePath, $themeDirectory) === 0) {
+		} else if ( strpos($absolutePath, $themeDirectory) === 0 ) {
 			$type = 'theme';
 			$pos = strlen($themeDirectory);
 		}
 
-		if ($pos !== null) {
+		if ( $pos !== null ) {
 			$nextSlash = strpos($absolutePath, '/', $pos + 1);
-			if ($nextSlash !== false) {
+			if ( $nextSlash !== false ) {
 				$componentDirectory = substr($absolutePath, $pos + 1, $nextSlash - $pos - 1);
 			} else {
 				$componentDirectory = substr($absolutePath, $pos + 1);
@@ -719,18 +723,18 @@ class ameRoleEditor extends amePersistentProModule {
 
 	protected function getRoleData() {
 		$wpRoles = ameRoleUtils::get_roles();
-		$roles = array();
+		$roles = [];
 
 		$usersByRole = count_users();
 
 		foreach ($wpRoles->role_objects as $roleId => $role) {
-			$capabilities = array();
-			if (!empty($role->capabilities) && is_array($role->capabilities)) {
+			$capabilities = [];
+			if ( !empty($role->capabilities) && is_array($role->capabilities) ) {
 				$capabilities = $this->menuEditor->castValuesToBool($role->capabilities);
 			}
 
 			$hasUsers = false;
-			if (isset($usersByRole['avail_roles'], $usersByRole['avail_roles'][$roleId])) {
+			if ( isset($usersByRole['avail_roles'], $usersByRole['avail_roles'][$roleId]) ) {
 				$hasUsers = ($usersByRole['avail_roles'][$roleId] > 0);
 			}
 
@@ -738,12 +742,12 @@ class ameRoleEditor extends amePersistentProModule {
 			//even if it's empty or if all of the keys (i.e. capability names) are numeric.
 			$capabilities = (object)$capabilities;
 
-			$roles[] = array(
+			$roles[] = [
 				'name'         => $roleId,
 				'displayName'  => ameUtils::get($wpRoles->role_names, $roleId, $roleId),
 				'capabilities' => $capabilities,
 				'hasUsers'     => $hasUsers,
-			);
+			];
 		}
 		return $roles;
 	}
@@ -754,7 +758,7 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @param WP_User[] $users List of zero or more users.
 	 * @return array Associative array indexed by capability name.
 	 */
-	protected function getAllCapabilities($users = array()) {
+	protected function getAllCapabilities($users = []) {
 		//Always include capabilities that are built into WordPress.
 		$capabilities = $this->getDefaultCapabilities();
 
@@ -781,13 +785,13 @@ class ameRoleEditor extends amePersistentProModule {
 
 	protected function getDefaultCapabilities() {
 		static $defaults = null;
-		if ($defaults !== null) {
+		if ( $defaults !== null ) {
 			return $defaults;
 		}
 
 		$defaults = self::loadCapabilities('default-capabilities.txt');
 
-		if (is_multisite()) {
+		if ( is_multisite() ) {
 			$defaults = array_merge($defaults, $this->getMultisiteOnlyCapabilities());
 		}
 
@@ -796,7 +800,7 @@ class ameRoleEditor extends amePersistentProModule {
 
 	protected function getMultisiteOnlyCapabilities() {
 		static $cache = null;
-		if ($cache === null) {
+		if ( $cache === null ) {
 			$cache = self::loadCapabilities('default-multisite-capabilities.txt');
 		}
 		return $cache;
@@ -811,16 +815,16 @@ class ameRoleEditor extends amePersistentProModule {
 	 */
 	public static function loadCapabilities($fileName, $fillValue = false) {
 		$fileName = __DIR__ . '/data/' . $fileName;
-		if (!is_file($fileName) || !is_readable($fileName)) {
-			return array();
+		if ( !is_file($fileName) || !is_readable($fileName) ) {
+			return [];
 		}
 
 		$contents = file_get_contents($fileName);
 
 		$capabilities = preg_split('@[\r\n]+@', $contents);
 		$capabilities = array_map('trim', $capabilities);
-		$capabilities = array_filter($capabilities, array(__CLASS__, 'isNotEmptyString'));
-		$capabilities = array_filter($capabilities, array(__CLASS__, 'isNotLineComment'));
+		$capabilities = array_filter($capabilities, [__CLASS__, 'isNotEmptyString']);
+		$capabilities = array_filter($capabilities, [__CLASS__, 'isNotLineComment']);
 
 		$capabilities = array_fill_keys($capabilities, $fillValue);
 
@@ -833,16 +837,16 @@ class ameRoleEditor extends amePersistentProModule {
 
 	protected static function isLineComment($input) {
 		$input = trim($input);
-		if ($input === '') {
+		if ( $input === '' ) {
 			return false;
 		}
 
 		$firstChar = substr($input, 0, 1);
-		if ($firstChar === '#' || $firstChar === ';') {
+		if ( $firstChar === '#' || $firstChar === ';' ) {
 			return true;
 		}
 
-		if (substr($input, 0, 2) === '//') {
+		if ( substr($input, 0, 2) === '//' ) {
 			return true;
 		}
 
@@ -863,7 +867,7 @@ class ameRoleEditor extends amePersistentProModule {
 		//$engine->addDataSource(new ameRexJsonCapabilityDataSource(__DIR__ . '/data/capability-metadata.json'));
 
 		$results = $engine->query(array_keys($this->capabilities), $this->knownComponents);
-		foreach($results as $capability => $components) {
+		foreach ($results as $capability => $components) {
 			$this->capabilities[$capability]->addManyUsages($components);
 		}
 	}
@@ -872,16 +876,16 @@ class ameRoleEditor extends amePersistentProModule {
 		$a = $this->knownComponents->components[$idA];
 		$b = $this->knownComponents->components[$idB];
 
-		if ($a->isActive && !$b->isActive) {
+		if ( $a->isActive && !$b->isActive ) {
 			return -1;
 		}
-		if ($b->isActive && !$a->isActive) {
+		if ( $b->isActive && !$a->isActive ) {
 			return 1;
 		}
-		if ($a->isInstalled && !$b->isInstalled) {
+		if ( $a->isInstalled && !$b->isInstalled ) {
 			return -1;
 		}
-		if ($b->isInstalled && !$a->isInstalled) {
+		if ( $b->isInstalled && !$a->isInstalled ) {
 			return 1;
 		}
 
@@ -893,17 +897,17 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @param WP_Post_Type $postType
 	 */
 	public function recordPostTypeOrigin($id, $postType) {
-		if (!is_admin() || empty($postType) || empty($id)) {
+		if ( !is_admin() || empty($postType) || empty($id) ) {
 			return;
 		}
 
-		if (isset($postType->_builtin) && $postType->_builtin) {
+		if ( isset($postType->_builtin) && $postType->_builtin ) {
 			return;
 		}
 
 		//Find the last entry that is part of a plugin or theme.
 		$component = $this->detectCallerComponent();
-		if ($component !== null) {
+		if ( $component !== null ) {
 			$this->postTypeRegistrants[$id] = $component;
 		}
 	}
@@ -912,18 +916,18 @@ class ameRoleEditor extends amePersistentProModule {
 		$id,
 		/** @noinspection PhpUnusedParameterInspection It's part of the filter signature. We can't remove it. */
 		$objectType,
-		$taxonomy = array()
+		$taxonomy = []
 	) {
-		if (!is_admin() || empty($taxonomy) || empty($id) || !is_array($taxonomy)) {
+		if ( !is_admin() || empty($taxonomy) || empty($id) || !is_array($taxonomy) ) {
 			return;
 		}
 
-		if (isset($taxonomy['_builtin']) && $taxonomy['_builtin']) {
+		if ( isset($taxonomy['_builtin']) && $taxonomy['_builtin'] ) {
 			return;
 		}
 
 		$component = $this->detectCallerComponent();
-		if ($component !== null) {
+		if ( $component !== null ) {
 			$this->taxonomyRegistrants[$id] = $component;
 		}
 	}
@@ -946,12 +950,12 @@ class ameRoleEditor extends amePersistentProModule {
 		//Find the last entry that is part of a plugin or theme.
 		$component = null;
 		foreach ($trace as $item) {
-			if (empty($item['file'])) {
+			if ( empty($item['file']) ) {
 				continue;
 			}
 
 			$possibleComponent = $this->getComponentIdFromPath($item['file']);
-			if ($possibleComponent) {
+			if ( $possibleComponent ) {
 				$component = $possibleComponent;
 			}
 		}
@@ -962,7 +966,7 @@ class ameRoleEditor extends amePersistentProModule {
 		$installedPlugins = get_plugins();
 		foreach ($installedPlugins as $pluginFile => $plugin) {
 			$pathComponents = explode('/', $pluginFile, 2);
-			if (count($pathComponents) < 2) {
+			if ( count($pathComponents) < 2 ) {
 				continue;
 			}
 			$component = new ameRexComponent(
@@ -975,7 +979,7 @@ class ameRoleEditor extends amePersistentProModule {
 		}
 
 		$installedMuPlugins = get_mu_plugins();
-		foreach($installedMuPlugins as $pluginFile => $plugin) {
+		foreach ($installedMuPlugins as $pluginFile => $plugin) {
 			$component = new ameRexComponent(
 				'mu-plugin:' . $pluginFile,
 				ameUtils::get($plugin, 'Name', $pluginFile)
@@ -985,14 +989,14 @@ class ameRoleEditor extends amePersistentProModule {
 			$this->knownComponents[$component->id] = $component;
 		}
 
-		$activeThemeSlugs = array(get_stylesheet(), get_template());
+		$activeThemeSlugs = [get_stylesheet(), get_template()];
 		foreach ($activeThemeSlugs as $slug) {
 			$componentId = 'theme:' . $slug;
-			if (isset($this->knownComponents[$componentId])) {
+			if ( isset($this->knownComponents[$componentId]) ) {
 				continue;
 			}
 			$theme = wp_get_theme($slug);
-			if (!empty($theme)) {
+			if ( !empty($theme) ) {
 				$component = new ameRexComponent($componentId, $theme->get('Name'));
 				$component->isActive = true;
 				$component->isInstalled = true;
@@ -1006,8 +1010,8 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @return ameRexCategory|null
 	 */
 	private function getComponentCategory($componentId) {
-		if (!isset($this->componentRootCategories[$componentId])) {
-			if (!isset($this->knownComponents[$componentId])) {
+		if ( !isset($this->componentRootCategories[$componentId]) ) {
+			if ( !isset($this->knownComponents[$componentId]) ) {
 				return null;
 			}
 			$category = new ameRexCategory($this->knownComponents[$componentId]->name, $componentId);
@@ -1024,12 +1028,12 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @return ameRexCategory[]
 	 */
 	protected function findProbablePostTypeCategories() {
-		$potentialPostTypes = array();
-		$foundCategories = array();
+		$potentialPostTypes = [];
+		$foundCategories = [];
 
 		//At the moment, WordPress database schema limits post types to 20 characters.
 		$namePattern = '(?P<post_type>.{1,20}?)s?';
-		$cptPatterns = array(
+		$cptPatterns = [
 			'@^edit_(?:(?:others|private|published)_)?' . $namePattern . '$@',
 			'@^delete_(?:(?:others|private|published)_)?' . $namePattern . '$@',
 			'@^publish_' . $namePattern . '$@',
@@ -1039,16 +1043,16 @@ class ameRoleEditor extends amePersistentProModule {
 
 			//WooCommerce stuff
 			'@^(assign|edit|manage|delete)_' . $namePattern . '_terms$@',
-		);
+		];
 
 		foreach ($this->uncategorizedCapabilities as $capability => $unused) {
 			foreach ($cptPatterns as $pattern) {
-				if (preg_match($pattern, $capability, $matches)) {
+				if ( preg_match($pattern, $capability, $matches) ) {
 					$postType = $matches['post_type'];
 
 					//Unknown CPT-like capability.
-					if (!isset($potentialPostTypes[$postType])) {
-						$potentialPostTypes[$postType] = array();
+					if ( !isset($potentialPostTypes[$postType]) ) {
+						$potentialPostTypes[$postType] = [];
 					}
 					$potentialPostTypes[$postType][$capability] = $capability;
 
@@ -1059,10 +1063,10 @@ class ameRoleEditor extends amePersistentProModule {
 
 		//Empirically, real post types have at least 3 associated capabilities.
 		foreach ($potentialPostTypes as $postType => $typeCaps) {
-			if (count($typeCaps) >= 3) {
+			if ( count($typeCaps) >= 3 ) {
 				//Note that this group does not correspond to an existing post type. It's just a set of similar caps.
 				$title = ameUtils::ucWords(str_replace('_', ' ', $postType));
-				if (substr($title, -1) !== 's') {
+				if ( substr($title, -1) !== 's' ) {
 					$title .= 's'; //Post type titles are usually plural.
 				}
 
@@ -1085,12 +1089,12 @@ class ameRoleEditor extends amePersistentProModule {
 
 		//Find the common prefix of each component root, if there is one.
 		foreach ($this->componentRootCategories as $category) {
-			if (!empty($category->capabilities) && (count($category->capabilities) > 1)) {
+			if ( !empty($category->capabilities) && (count($category->capabilities) > 1) ) {
 				$possiblePrefix = key($category->capabilities);
 				foreach ($category->capabilities as $capability => $unusedValue) {
 					for ($i = 0; $i < min(strlen($possiblePrefix), strlen($capability)); $i++) {
-						if ($possiblePrefix[$i] !== $capability[$i]) {
-							if ($i >= 1) {
+						if ( $possiblePrefix[$i] !== $capability[$i] ) {
+							if ( $i >= 1 ) {
 								$possiblePrefix = substr($possiblePrefix, 0, $i);
 							} else {
 								$possiblePrefix = '';
@@ -1099,21 +1103,21 @@ class ameRoleEditor extends amePersistentProModule {
 						}
 					}
 
-					if ($possiblePrefix === '') {
+					if ( $possiblePrefix === '' ) {
 						break;
 					}
 				}
 
 				//The prefix must be at least 2 characters long and must not consist entirely of stopwords.
-				if (strlen($possiblePrefix) >= 2) {
+				if ( strlen($possiblePrefix) >= 2 ) {
 					$tokens = $this->tokenizeCapability($possiblePrefix);
 					$foundStopWords = 0;
 					foreach ($tokens as $token) {
-						if (isset($stopWords[strtolower($token)])) {
+						if ( isset($stopWords[strtolower($token)]) ) {
 							$foundStopWords++;
 						}
 					}
-					if ($foundStopWords === count($tokens)) {
+					if ( $foundStopWords === count($tokens) ) {
 						continue;
 					}
 
@@ -1123,61 +1127,61 @@ class ameRoleEditor extends amePersistentProModule {
 			}
 		}
 
-		$possibleCategories = array();
+		$possibleCategories = [];
 		foreach ($this->uncategorizedCapabilities as $capability => $unusedValue) {
 			$tokens = $this->tokenizeCapability($capability);
 			$upperLimit = min(2, count($tokens) - 1);
 
 			$prefix = null;
 			for ($i = 0; $i < $upperLimit; $i++) {
-				if ($prefix === null) {
+				if ( $prefix === null ) {
 					$prefix = $tokens[$i];
 				} else {
 					$prefix .= ' ' . $tokens[$i];
 				}
-				if (isset($stopWords[$tokens[$i]]) || (strlen($tokens[$i]) < 2)) {
+				if ( isset($stopWords[$tokens[$i]]) || (strlen($tokens[$i]) < 2) ) {
 					continue;
 				}
 
 				//Check if one of the existing component categories has the same prefix
 				//and add this capability there.
-				if (isset($this->componentCapPrefixes[$prefix])) {
+				if ( isset($this->componentCapPrefixes[$prefix]) ) {
 					$this->componentCapPrefixes[$prefix]->addCapabilityToDefaultLocation($capability);
 					unset($this->uncategorizedCapabilities[$capability]);
 
 					$componentId = $this->componentCapPrefixes[$prefix]->componentId;
-					if ($componentId !== null) {
+					if ( $componentId !== null ) {
 						$this->capabilities[$capability]->addUsage($componentId);
-						if (empty($this->capabilities[$capability]->componentId)) {
+						if ( empty($this->capabilities[$capability]->componentId) ) {
 							$this->capabilities[$capability]->componentId = $componentId;
 						}
 					}
 				}
 
-				if (!isset($possibleCategories[$prefix])) {
-					$possibleCategories[$prefix] = array();
+				if ( !isset($possibleCategories[$prefix]) ) {
+					$possibleCategories[$prefix] = [];
 				}
 				$possibleCategories[$prefix][$capability] = true;
 			}
 		}
 
-		uasort($possibleCategories, array($this, 'compareArraySizes'));
+		uasort($possibleCategories, [$this, 'compareArraySizes']);
 
-		$approvedCategories = array();
+		$approvedCategories = [];
 		foreach ($possibleCategories as $prefix => $capabilities) {
 			$capabilities = array_intersect_key($capabilities, $this->uncategorizedCapabilities);
-			if (count($capabilities) < 3) {
+			if ( count($capabilities) < 3 ) {
 				continue;
 			}
 
 			$title = $prefix;
 			//Convert all-lowercase to Title Case, but preserve stuff that already has mixed case.
-			if (strtolower($title) === $title) {
+			if ( strtolower($title) === $title ) {
 				$title = ameUtils::ucWords($title);
 			}
 
 			//No vowels = probably an acronym.
-			if (!preg_match('@[aeuio]@', $title)) {
+			if ( !preg_match('@[aeuio]@', $title) ) {
 				$title = strtoupper($title);
 			}
 
@@ -1198,8 +1202,8 @@ class ameRoleEditor extends amePersistentProModule {
 
 	private function getPrefixStopWords() {
 		static $stopWords = null;
-		if ($stopWords === null) {
-			$stopWords = array(
+		if ( $stopWords === null ) {
+			$stopWords = [
 				'edit',
 				'delete',
 				'add',
@@ -1219,7 +1223,7 @@ class ameRoleEditor extends amePersistentProModule {
 				'setting',
 				'update',
 				'install',
-			);
+			];
 			$stopWords = array_fill_keys($stopWords, true);
 		}
 		return $stopWords;
@@ -1233,49 +1237,49 @@ class ameRoleEditor extends amePersistentProModule {
 		check_ajax_referer(self::UPDATE_PREFERENCES_ACTION);
 
 		@header('Content-Type: application/json; charset=' . get_option('blog_charset'));
-		if (!$this->userCanAccessModule()) {
-			echo json_encode(array('error' => 'Access denied'));
+		if ( !$this->userCanAccessModule() ) {
+			echo json_encode(['error' => 'Access denied']);
 			exit;
 		}
 
 		$post = $this->menuEditor->get_post_params();
-		if (!isset($post['preferences']) || !is_string($post['preferences'])) {
-			echo json_encode(array('error' => 'The "preferences" field is missing or invalid.'));
+		if ( !isset($post['preferences']) || !is_string($post['preferences']) ) {
+			echo json_encode(['error' => 'The "preferences" field is missing or invalid.']);
 			exit;
 		}
 
 		$preferences = json_decode($post['preferences'], true);
-		if ($preferences === null) {
-			echo json_encode(array('error' => 'The "preferences" field is not valid JSON.'));
+		if ( $preferences === null ) {
+			echo json_encode(['error' => 'The "preferences" field is not valid JSON.']);
 			exit;
 		}
 
-		if (!is_array($preferences)) {
-			echo json_encode(array('error' => 'The "preferences" field is not valid. Expected an associative array.'));
+		if ( !is_array($preferences) ) {
+			echo json_encode(['error' => 'The "preferences" field is not valid. Expected an associative array.']);
 			exit;
 		}
 
 		update_user_meta(get_current_user_id(), self::USER_PREFERENCE_KEY, json_encode($preferences));
 
-		echo json_encode(array('success' => true));
+		echo json_encode(['success' => true]);
 		exit;
 	}
 
-	public function handleSettingsForm($post = array()) {
-		if (!$this->userCanAccessModule()) {
+	public function handleSettingsForm($post = []) {
+		if ( !$this->userCanAccessModule() ) {
 			wp_die("You don't have sufficient permissions to change these settings.");
 		}
 
-		$redirectParams = array();
-		if (!empty($post['selectedActor'])) {
+		$redirectParams = [];
+		if ( !empty($post['selectedActor']) ) {
 			$redirectParams['selected_actor'] = strval($post['selectedActor']);
 		}
 
 		$validator = new ameRexSettingsValidator(
 			$post['settings'],
-			$this->getAllCapabilities(array(wp_get_current_user())),
+			$this->getAllCapabilities([wp_get_current_user()]),
 			$this->getUserDefinedCaps(),
-			ameUtils::get($this->loadSettings(), 'editableRoles', array()),
+			ameUtils::get($this->loadSettings(), 'editableRoles', []),
 			$this->getEffectiveEditableRoles(),
 			$this->menuEditor
 		);
@@ -1289,17 +1293,17 @@ class ameRoleEditor extends amePersistentProModule {
 		//var_dump($totalChanges, $post);
 		//exit;
 
-		if (($totalChanges <= 0) && !$shouldUpdateNetwork) {
+		if ( ($totalChanges <= 0) && !$shouldUpdateNetwork ) {
 			$redirectParams['no-changes-made'] = 1;
 			wp_redirect($this->getTabUrl($redirectParams));
 			exit;
 		}
 
-		if ($shouldUpdateNetwork && ($totalChanges < 1)) {
+		if ( $shouldUpdateNetwork && ($totalChanges < 1) ) {
 			$totalChanges = 1; //A network update is always at least one change.
 		}
 
-		if ($this->backupsEnabled) {
+		if ( $this->backupsEnabled ) {
 			//Make a backup before actually changing anything.
 			$currentUser = wp_get_current_user();
 			$this->createRoleBackup(sprintf(
@@ -1310,7 +1314,7 @@ class ameRoleEditor extends amePersistentProModule {
 		}
 
 		//Save user defined capabilities.
-		if ($validator->getUserDefinedCaps() !== null) {
+		if ( $validator->getUserDefinedCaps() !== null ) {
 			$this->saveUserDefinedCaps($validator->getUserDefinedCaps());
 		}
 
@@ -1330,10 +1334,10 @@ class ameRoleEditor extends amePersistentProModule {
 
 		//Update role capabilities and display names.
 		$rolesToModify = $validator->getRolesToModify();
-		if (!empty($rolesToModify)) {
+		if ( !empty($rolesToModify) ) {
 			foreach ($rolesToModify as $id => $role) {
 				//Rename the role.
-				if ($wpRoles->roles[$id]['name'] !== $role['displayName']) {
+				if ( $wpRoles->roles[$id]['name'] !== $role['displayName'] ) {
 					$wpRoles->roles[$id]['name'] = $role['displayName'];
 				}
 				$wpRoles->roles[$id]['capabilities'] = $role['capabilities'];
@@ -1344,9 +1348,9 @@ class ameRoleEditor extends amePersistentProModule {
 
 		//Apply role settings to all network sites if requested. We'll do that even if the settings
 		//weren't changed, which lets you use this feature to normalize role settings across the network.
-		if ($shouldUpdateNetwork) {
+		if ( $shouldUpdateNetwork ) {
 			$result = $this->updateNetworkRoles(get_option($wpRoles->role_key));
-			if (is_wp_error($result)) {
+			if ( is_wp_error($result) ) {
 				$errors[] = $result;
 				$this->storeSettingsErrors($errors);
 			}
@@ -1362,7 +1366,7 @@ class ameRoleEditor extends amePersistentProModule {
 
 			//We have to go through the trouble of removing/adding each role individually
 			//because some plugins use the "add_user_role" and "remove_user_role" hooks.
-			$oldRoles = (isset($user->roles) && is_array($user->roles)) ? $user->roles : array();
+			$oldRoles = (isset($user->roles) && is_array($user->roles)) ? $user->roles : [];
 			$removedRoles = array_diff($oldRoles, $newRoles);
 			$addedRoles = array_diff($newRoles, $oldRoles);
 			foreach ($removedRoles as $role) {
@@ -1376,7 +1380,7 @@ class ameRoleEditor extends amePersistentProModule {
 			//This is faster than calling add_cap() a bunch of times and it lets us precisely control
 			//the order of roles in the array.
 			$user->remove_all_caps();
-			$user->roles = array();
+			$user->roles = [];
 			$user->caps = array_merge($newCaps, array_fill_keys($newRoles, true));
 
 			update_user_meta($user->ID, $user->cap_key, $user->caps);
@@ -1432,18 +1436,18 @@ class ameRoleEditor extends amePersistentProModule {
 		global $wpdb;
 		/** @var wpdb $wpdb */
 
-		if (!is_multisite()) {
+		if ( !is_multisite() ) {
 			return new WP_Error(
 				'ame_not_multisite',
 				'Cannot update roles on all sites because this is not a Multisite network.'
 			);
 		}
 
-		if (empty($roleData)) {
+		if ( empty($roleData) ) {
 			return new WP_Error('ame_invalid_role_data', 'Role data is invalid.');
 		}
 
-		if (!function_exists('get_sites')) {
+		if ( !function_exists('get_sites') ) {
 			return new WP_Error(
 				'ame_wp_incompatible',
 				'The plugin does not support this feature in the current WordPress version.'
@@ -1459,7 +1463,7 @@ class ameRoleEditor extends amePersistentProModule {
 			&& apply_filters('admin_menu_editor-clear_role_cache', false);
 		$originalBlogId = is_callable('get_current_blog_id') ? get_current_blog_id() : null;
 
-		$sites = get_sites(array(
+		$sites = get_sites([
 			/*
 			 * As of this writing, WP documentation doesn't mention any officially supported way
 			 * to make get_sites() return all available results. There are unofficial workarounds,
@@ -1468,7 +1472,7 @@ class ameRoleEditor extends amePersistentProModule {
 			 */
 			'number' => 1000000,
 			'fields' => 'ids',
-		));
+		]);
 		$serializedData = serialize($roleData);
 
 		foreach ($sites as $siteId) {
@@ -1478,26 +1482,26 @@ class ameRoleEditor extends amePersistentProModule {
 
 			$query = $wpdb->prepare(
 				"UPDATE {$tableName} SET option_value = %s WHERE option_name = %s LIMIT 1",
-				array($serializedData, $optionName)
+				[$serializedData, $optionName]
 			);
 
 			$result = $wpdb->query($query);
-			if ($result === false) {
+			if ( $result === false ) {
 				$errorMessage = sprintf('Failed to update site with ID %d.', $siteId);
-				if (!empty($wpdb->last_error)) {
+				if ( !empty($wpdb->last_error) ) {
 					$errorMessage .= ' Database error: ' . $wpdb->last_error;
 				}
 				return new WP_Error('ame_db_error', $errorMessage);
 			}
 
 			//Clear the option cache on the target site.
-			if ($shouldClearCache) {
+			if ( $shouldClearCache ) {
 				wp_cache_switch_to_blog($siteId);
 				wp_cache_delete($optionName, 'options');
 			}
 		}
 
-		if ($shouldClearCache && ($originalBlogId !== null)) {
+		if ( $shouldClearCache && ($originalBlogId !== null) ) {
 			wp_cache_switch_to_blog($originalBlogId);
 		}
 
@@ -1509,18 +1513,18 @@ class ameRoleEditor extends amePersistentProModule {
 		global $wpRoles;
 		$id = '';
 
-		if (!empty($rolesToDelete)) {
+		if ( !empty($rolesToDelete) ) {
 			$deletedIds = array_keys($rolesToDelete);
-			if (count($deletedIds) === 1) {
+			if ( count($deletedIds) === 1 ) {
 				$summary[] = 'Deleted ' . $deletedIds[0];
-			} else if (count($deletedIds) === 2) {
+			} else if ( count($deletedIds) === 2 ) {
 				$summary[] = 'Deleted ' . implode(' and ', $deletedIds);
 			} else {
 				$summary[] = 'Deleted ' . count($deletedIds) . ' roles';
 			}
 		}
 
-		if (!empty($rolesToCreate)) {
+		if ( !empty($rolesToCreate) ) {
 			$createdIds = array_keys($rolesToCreate);
 			$summary[] = 'Created ' . $this->formatPhraseList($createdIds, '%d roles');
 		}
@@ -1532,31 +1536,31 @@ class ameRoleEditor extends amePersistentProModule {
 		$addedCaps = array_diff_key($newGrantedCaps, $oldGrantedCaps);
 		$removedCaps = array_diff_key($oldGrantedCaps, $newGrantedCaps);
 
-		$changes = array();
-		if (!empty($addedCaps)) {
+		$changes = [];
+		if ( !empty($addedCaps) ) {
 			$changes[] = count($addedCaps) . ' added';
 		}
-		if (!empty($removedCaps)) {
+		if ( !empty($removedCaps) ) {
 			$changes[] = count($removedCaps) . ' removed';
 		}
 		$capSummaries[] = $id . ' (' . implode(', ', $changes) . ')';
 
 		//Add renames and cap changes to the summary.
-		if (!empty($renamedRoles)) {
+		if ( !empty($renamedRoles) ) {
 			$summary[] = 'Renamed ' . $this->formatPhraseList($renamedRoles, '%d roles', 1);
 		}
-		if (!empty($capSummaries)) {
+		if ( !empty($capSummaries) ) {
 			$summary[] = 'Changed capabilities: ' . implode(', ', $capSummaries);
 		}
 	}
 
 	private function formatPhraseList($items, $combinedTemplate = '%d items', $limit = 2) {
 		$itemCount = count($items);
-		if ($itemCount === 1) {
+		if ( $itemCount === 1 ) {
 			return $items[0];
-		} else if ($itemCount === 2) {
+		} else if ( $itemCount === 2 ) {
 			return implode(' and ', $items);
-		} else if ($itemCount <= $limit) {
+		} else if ( $itemCount <= $limit ) {
 			return implode(', ', $items);
 		}
 		return sprintf($combinedTemplate, $itemCount);
@@ -1566,7 +1570,7 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @param array $errors
 	 */
 	private function storeSettingsErrors($errors) {
-		if (empty($errors)) {
+		if ( empty($errors) ) {
 			delete_transient(self::SETTINGS_ERROR_TRANSIENT);
 			return;
 		}
@@ -1579,7 +1583,7 @@ class ameRoleEditor extends amePersistentProModule {
 	 */
 	private function fetchSettingsErrors() {
 		$storedErrors = get_transient(self::SETTINGS_ERROR_TRANSIENT);
-		if ($storedErrors !== false) {
+		if ( $storedErrors !== false ) {
 			delete_transient(self::SETTINGS_ERROR_TRANSIENT);
 			$this->cachedSettingsErrors = (array)$storedErrors;
 		}
@@ -1600,7 +1604,7 @@ class ameRoleEditor extends amePersistentProModule {
 	private function createRoleBackup($comment = '', $roleData = null) {
 		//TODO: If we're going to do backups, remember to create the table if it doesn't exist.
 		//TODO: Delete the table when the plugin is uninstalled.
-		if ($roleData === null) {
+		if ( $roleData === null ) {
 			$wpRoles = ameRoleUtils::get_roles();
 			$roleData = get_option($wpRoles->role_key);
 		}
@@ -1610,14 +1614,14 @@ class ameRoleEditor extends amePersistentProModule {
 
 		$result = $wpdb->insert(
 			$this->backupTable,
-			array(
+			[
 				'created_on' => gmdate('Y-m-d H:i:s'),
 				'site_id'    => get_current_blog_id(),
 				'user_id'    => get_current_user_id(),
 				'role_data'  => serialize($roleData),
 				'comment'    => $comment,
-			),
-			array('%s', '%d', '%d', '%s', '%s')
+			],
+			['%s', '%d', '%d', '%s', '%s']
 		);
 		return ($result !== false);
 	}
@@ -1636,7 +1640,7 @@ class ameRoleEditor extends amePersistentProModule {
 			. ' WHERE 1 ORDER BY created_on DESC LIMIT 1 OFFSET 10'
 		);
 
-		if (empty($nthItemDate)) {
+		if ( empty($nthItemDate) ) {
 			return; //There are 10 or fewer backups. Do nothing.
 		}
 
@@ -1658,11 +1662,11 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @return bool
 	 */
 	private function userCanAccessModule($userId = null) {
-		if (($userId === null) || ($userId === get_current_user_id())) {
+		if ( ($userId === null) || ($userId === get_current_user_id()) ) {
 			return $this->menuEditor->current_user_can_edit_menu() && current_user_can(self::REQUIRED_CAPABILITY);
 		}
 		$user = get_user_by('id', $userId);
-		if (!$user) {
+		if ( !$user ) {
 			return false;
 		}
 		return $this->menuEditor->user_can_edit_menu($userId)
@@ -1672,7 +1676,7 @@ class ameRoleEditor extends amePersistentProModule {
 	private function saveUserDefinedCaps($capabilities) {
 		delete_site_option(self::USER_DEFINED_CAP_KEY);
 
-		if (empty($capabilities)) {
+		if ( empty($capabilities) ) {
 			return;
 		}
 		update_site_option(self::USER_DEFINED_CAP_KEY, $capabilities);
@@ -1684,9 +1688,9 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @return array [capabilityName => arbitraryValue]
 	 */
 	private function getUserDefinedCaps() {
-		$caps = get_site_option(self::USER_DEFINED_CAP_KEY, array());
-		if (!is_array($caps)) {
-			return array();
+		$caps = get_site_option(self::USER_DEFINED_CAP_KEY, []);
+		if ( !is_array($caps) ) {
+			return [];
 		}
 		return $caps;
 	}
@@ -1720,7 +1724,7 @@ class ameRoleEditor extends amePersistentProModule {
 
 		//It's possible that another plugin has already removed some roles from the array. We'll need the full list
 		//so that we can restore enabled roles if the user has selected the "user-defined-list" strategy.
-		if (function_exists('wp_roles')) {
+		if ( function_exists('wp_roles') ) {
 			$allRoles = array_merge(wp_roles()->roles, $editableRoles);
 		} else {
 			$allRoles = $editableRoles;
@@ -1732,27 +1736,27 @@ class ameRoleEditor extends amePersistentProModule {
 		}
 
 		//A super admin always has full access to everything. Do not remove any roles.
-		if (is_multisite() && is_super_admin()) {
+		if ( is_multisite() && is_super_admin() ) {
 			return $editableRoles;
 		}
 
-		$settings = ameUtils::get($this->loadSettings(), 'editableRoles', array());
+		$settings = ameUtils::get($this->loadSettings(), 'editableRoles', []);
 		$userRoles = $this->menuEditor->get_user_roles($user);
 
 		//User-specific settings have precedence.
 		//For users, "auto" means "use role settings".
 		$userActorId = 'user:' . $user->user_login;
-		if ( ameUtils::get($settings, array($userActorId, 'strategy'), 'auto') !== 'auto' ) {
+		if ( ameUtils::get($settings, [$userActorId, 'strategy'], 'auto') !== 'auto' ) {
 			$userSettings = $settings[$userActorId];
-			if ($userSettings['strategy'] === 'none') {
+			if ( $userSettings['strategy'] === 'none' ) {
 				//Leave the roles unchanged.
 				$this->cachedOverallEditableRoleStrategy[$user->ID] = 'none';
 				return $editableRoles;
-			} else if ($userSettings['strategy'] === 'user-defined-list') {
+			} else if ( $userSettings['strategy'] === 'user-defined-list' ) {
 				//Allow editing only those roles that are on the list.
-				$filteredResult = array();
-				$allowedRoles = ameUtils::get($userSettings, 'userDefinedList', array());
-				foreach($allRoles as $roleId => $role) {
+				$filteredResult = [];
+				$allowedRoles = ameUtils::get($userSettings, 'userDefinedList', []);
+				foreach ($allRoles as $roleId => $role) {
 					if ( isset($allowedRoles[$roleId]) ) {
 						$filteredResult[$roleId] = $role;
 					}
@@ -1770,21 +1774,38 @@ class ameRoleEditor extends amePersistentProModule {
 
 		$leaveUnchanged = true;
 		$hasAnyUserDefinedList = false;
-		$autoDisabledRoles = array();
-		$filteredResult = array();
+		$autoDisabledRoles = [];
+		$filteredResult = [];
 
-		foreach($allRoles as $roleId => $role) {
+		foreach ($allRoles as $roleId => $role) {
 			$wasEnabled = isset($editableRoles[$roleId]);
 			$canAutoDisable = false;
 
 			//Include this role if at least one of the user's roles is allowed to edit it.
-			foreach($userRoles as $userRoleId) {
+			foreach ($userRoles as $userRoleId) {
 				$actorId = 'role:' . $userRoleId;
 
-				$strategy = ameUtils::get($settings, array($actorId, 'strategy'), 'auto');
+				$strategy = ameUtils::get(
+					$settings,
+					[$actorId, 'strategy'],
+					($actorId === 'role:administrator') ? 'none' : 'auto'
+				);
 				$leaveUnchanged = $leaveUnchanged && ($strategy === 'none');
 
-				if ($strategy === 'user-defined-list') {
+				/*
+				Special case: The "Administrator" role.
+
+				Initially, Administrator had the same default restrictions as other roles. That is,
+				they could only edit roles that had a subset of their capabilities. However, I got
+				too many support requests from people who were surprised that their Administrator
+				account couldn't edit users with custom roles that had some capabilities that the
+				Administrator role didn't have.
+
+				To avoid that, Administrator now defaults to "none" = leave unchanged. Of course,
+				you can still change that in the settings.
+				 */
+
+				if ( $strategy === 'user-defined-list' ) {
 					$hasAnyUserDefinedList = true;
 					if ( isset($settings[$actorId]['userDefinedList'][$roleId]) ) {
 						$filteredResult[$roleId] = $role;
@@ -1809,20 +1830,29 @@ class ameRoleEditor extends amePersistentProModule {
 						$filteredResult[$roleId] = $role;
 						break;
 					}
-				} else if ($strategy === 'none') {
-					if ($wasEnabled) {
+				} else if ( $strategy === 'none' ) {
+					if ( $wasEnabled ) {
 						$filteredResult[$roleId] = $role;
+						$canAutoDisable = false;
+						break;
 					}
+				} else {
+					//This should never happen.
+					throw new RuntimeException(sprintf(
+						'Invalid editable role strategy "%s" for actor "%s".',
+						$strategy,
+						$actorId
+					));
 				}
 			}
 
-			if ($canAutoDisable && !isset($filteredRoles[$roleId])) {
+			if ( $canAutoDisable && !isset($filteredResult[$roleId]) ) {
 				$autoDisabledRoles[] = $roleId;
 			}
 		}
 
 		//Are all of the roles set to "none" = leave unchanged?
-		if ($leaveUnchanged) {
+		if ( $leaveUnchanged ) {
 			$this->cachedOverallEditableRoleStrategy[$user->ID] = 'none';
 			return $editableRoles;
 		}
@@ -1832,9 +1862,9 @@ class ameRoleEditor extends amePersistentProModule {
 
 		//We won't need the capability cache again unless something changes or replaces the current user mid-request.
 		//That's probably going to be rare, so we can throw away the cache to free up some RAM.
-		$this->cachedEnabledRoleCaps = array();
+		$this->cachedEnabledRoleCaps = [];
 		//Update the user cache.
-		if ($overallStrategy === 'auto') {
+		if ( $overallStrategy === 'auto' ) {
 			$this->cachedEditableRoles[$user->ID] = new ameEditableRoleLimiter($autoDisabledRoles);
 		} else {
 			$this->cachedEditableRoles[$user->ID] = new ameEditableRoleReplacer(
@@ -1842,14 +1872,14 @@ class ameRoleEditor extends amePersistentProModule {
 			);
 		}
 
-		if (!$this->isRoleCacheClearingHookSet) {
+		if ( !$this->isRoleCacheClearingHookSet ) {
 			$this->isRoleCacheClearingHookSet = true;
 			//Clear cache when user roles or capabilities change.
-			add_action('updated_user_meta', array($this, 'clearEditableRoleCache'), 10, 0);
-			add_action('deleted_user_meta', array($this, 'clearEditableRoleCache'), 10, 0);
+			add_action('updated_user_meta', [$this, 'clearEditableRoleCache'], 10, 0);
+			add_action('deleted_user_meta', [$this, 'clearEditableRoleCache'], 10, 0);
 			//Clear cache when switching to another site because users can have different roles
 			//on different sites.
-			add_action('switch_blog', array($this, 'clearEditableRoleCache'), 10, 0);
+			add_action('switch_blog', [$this, 'clearEditableRoleCache'], 10, 0);
 		}
 
 		return $filteredResult;
@@ -1861,18 +1891,18 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @return boolean[]
 	 */
 	private function getEnabledCoreCapabilitiesForRole($roleId, $roleData = null) {
-		if (isset($this->cachedEnabledRoleCaps[$roleId])) {
+		if ( isset($this->cachedEnabledRoleCaps[$roleId]) ) {
 			return $this->cachedEnabledRoleCaps[$roleId];
 		}
 
-		if ($roleData) {
+		if ( $roleData ) {
 			$capabilities = isset($roleData['capabilities']) ? $roleData['capabilities'] : null;
 		} else {
 			$roleObject = get_role($roleId);
 			$capabilities = isset($roleObject->capabilities) ? $roleObject->capabilities : null;
 		}
-		if (!isset($capabilities) || !is_array($capabilities)) {
-			return array();
+		if ( !isset($capabilities) || !is_array($capabilities) ) {
+			return [];
 		}
 
 		$enabledCaps = array_filter($capabilities);
@@ -1893,10 +1923,10 @@ class ameRoleEditor extends amePersistentProModule {
 	 */
 	private function getEffectiveEditableRoles() {
 		$editableRoles = get_editable_roles();
-		if (empty($editableRoles) || !is_array($editableRoles)) {
-			$editableRoles = array();
+		if ( empty($editableRoles) || !is_array($editableRoles) ) {
+			$editableRoles = [];
 		}
-		if (function_exists('bbp_get_dynamic_roles')) {
+		if ( function_exists('bbp_get_dynamic_roles') ) {
 			$userId = get_current_user_id();
 			if (
 				!isset($this->cachedOverallEditableRoleStrategy[$userId])
@@ -1910,9 +1940,9 @@ class ameRoleEditor extends amePersistentProModule {
 	}
 
 	public function clearEditableRoleCache() {
-		$this->cachedEditableRoles = array();
-		$this->cachedOverallEditableRoleStrategy = array();
-		$this->cachedEnabledRoleCaps = array();
+		$this->cachedEditableRoles = [];
+		$this->cachedOverallEditableRoleStrategy = [];
+		$this->cachedEnabledRoleCaps = [];
 	}
 
 	/**
@@ -1925,8 +1955,8 @@ class ameRoleEditor extends amePersistentProModule {
 	 * @return array
 	 */
 	public function restrictUserEditing($requiredCaps, $capability, $thisUserId, $args) {
-		static $editUserCaps = array('edit_user', 'delete_user', 'promote_user');
-		if (!in_array($capability, $editUserCaps) || !isset($args[0])) {
+		static $editUserCaps = ['edit_user', 'delete_user', 'promote_user'];
+		if ( !in_array($capability, $editUserCaps) || !isset($args[0]) ) {
 			return $requiredCaps;
 		}
 
@@ -1938,29 +1968,29 @@ class ameRoleEditor extends amePersistentProModule {
 		$isSuperAdmin = $isMultisite && is_super_admin($thisUserId);
 
 		//Super Admins can edit everything.
-		if ($isSuperAdmin) {
+		if ( $isSuperAdmin ) {
 			return $requiredCaps;
 		}
 
-		$accessDenied = array_merge($requiredCaps, array('do_not_allow'));
+		$accessDenied = array_merge($requiredCaps, ['do_not_allow']);
 
 		//Only Super Admins can edit other Super Admins.
-		if ($isMultisite && is_super_admin($targetUserId) && !$isSuperAdmin) {
+		if ( $isMultisite && is_super_admin($targetUserId) && !$isSuperAdmin ) {
 			return $accessDenied;
 		}
 
 		//Users that don't have access to the role editor can't edit users that do have access.
-		if (!$this->userCanAccessModule($thisUserId) && $this->userCanAccessModule($targetUserId)) {
+		if ( !$this->userCanAccessModule($thisUserId) && $this->userCanAccessModule($targetUserId) ) {
 			return $accessDenied;
 		}
 
 		//Finally, a user can only edit those other users that have an editable role.
 		//This part only works with the current user because get_editable_roles() does not take a user parameter.
-		if (($thisUserId === get_current_user_id()) && ($thisUserId !== $targetUserId) ) {
+		if ( ($thisUserId === get_current_user_id()) && ($thisUserId !== $targetUserId) ) {
 			//The file that defines get_editable_roles() is only loaded in the admin back-end even though
 			//the "edit_user" capability is also used in the front-end, e.g. when adding an "Edit" link
 			//to the Toolbar/Admin Bar on author pages.
-			if (!function_exists('get_editable_roles')) {
+			if ( !function_exists('get_editable_roles') ) {
 				return $requiredCaps;
 			}
 			$editableRoles = get_editable_roles();
@@ -1972,19 +2002,19 @@ class ameRoleEditor extends amePersistentProModule {
 
 			//Don't apply any further restrictions if all editable role settings are set to "leave unchanged"
 			//for this user.
-			if ($strategy === 'none') {
+			if ( $strategy === 'none' ) {
 				return $requiredCaps;
 			}
 
-			if (function_exists('bbp_get_dynamic_roles')) {
+			if ( function_exists('bbp_get_dynamic_roles') ) {
 				$bbPressRoles = bbp_get_dynamic_roles();
 			} else {
-				$bbPressRoles = array();
+				$bbPressRoles = [];
 			}
 
 			$targetUser = get_user_by('id', $targetUserId);
-			$roles = (isset($targetUser->roles) && is_array($targetUser->roles)) ? $targetUser->roles : array();
-			foreach($roles as $roleId) {
+			$roles = (isset($targetUser->roles) && is_array($targetUser->roles)) ? $targetUser->roles : [];
+			foreach ($roles as $roleId) {
 				/*
 				 * = bbPress compatibility fix =
 				 *
@@ -1995,11 +2025,11 @@ class ameRoleEditor extends amePersistentProModule {
 				 * This should not automatically prevent administrators from editing users who have any bbPress roles.
 				 * Therefore, let's ignore bbPress roles here unless the user has custom editable role settings.
 				 */
-				if (array_key_exists($roleId, $bbPressRoles) && ($strategy !== 'user-defined-list')) {
+				if ( array_key_exists($roleId, $bbPressRoles) && ($strategy !== 'user-defined-list') ) {
 					continue;
 				}
 
-				if (!array_key_exists($roleId, $editableRoles)) {
+				if ( !array_key_exists($roleId, $editableRoles) ) {
 					return $accessDenied;
 				}
 			}
@@ -2037,7 +2067,7 @@ class ameEditableRoleReplacer implements ameEditableRoleFilter {
 	}
 
 	public function filter($allRoles, $editableRoles) {
-		$result = array();
+		$result = [];
 		foreach ($allRoles as $roleId => $role) {
 			if ( isset($this->enabledRoles[$roleId]) ) {
 				$result[$roleId] = $role;

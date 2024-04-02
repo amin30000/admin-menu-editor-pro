@@ -353,6 +353,10 @@ class Wslm_LicenseServer {
 		return $license;
 	}
 
+	/**
+	 * @param string $licenseKey
+	 * @return Wslm_ProductLicense|null
+	 */
 	public function loadLicenseByKey($licenseKey) {
 		return $this->loadLicense($licenseKey, null, true);
 	}

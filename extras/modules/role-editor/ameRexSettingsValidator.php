@@ -6,10 +6,10 @@
  */
 class ameRexSettingsValidator {
 	private $inputData = '';
-	private $errors = array();
+	private $errors = [];
 
-	private $preExistingCapabilities = array();
-	private $preExistingUserDefinedCaps = array();
+	private $preExistingCapabilities = [];
+	private $preExistingUserDefinedCaps = [];
 	private $oldEditableRoleSettings;
 
 	/**
@@ -20,11 +20,11 @@ class ameRexSettingsValidator {
 	private $userDefinedCaps = null;
 	private $modifiedUserDefinedCapCount = 0;
 
-	private $rolesToDelete = array();
-	private $rolesToCreate = array();
-	private $rolesToModify = array();
-	private $usersToModify = array();
-	private $knownRoleIDs = array();
+	private $rolesToDelete = [];
+	private $rolesToCreate = [];
+	private $rolesToModify = [];
+	private $usersToModify = [];
+	private $knownRoleIDs = [];
 	private $existingUsers;
 
 	private $editableRoleSettings;
@@ -37,7 +37,7 @@ class ameRexSettingsValidator {
 	private $effectiveEditableRoles;
 
 	/**
-	 * @param string $jsonString Settings submitted by the user.
+	 * @param string $jsonString     Settings submitted by the user.
 	 * @param array $allCapabilities Capabilities that exist now, before the submitted settings are applied.
 	 * @param array $userDefinedCaps
 	 * @param array $oldEditableRoleSettings
@@ -57,10 +57,10 @@ class ameRexSettingsValidator {
 	}
 
 	public function validate() {
-		$this->errors = array();
+		$this->errors = [];
 		$data = json_decode($this->inputData, true);
 
-		if ($data === null) {
+		if ( $data === null ) {
 			$this->errors[] = new WP_Error(
 				'ame_rex_invalid_json',
 				'JSON parsing failed. Submitted settings are probably invalid or corrupted.'
@@ -68,7 +68,7 @@ class ameRexSettingsValidator {
 			return $this->errors;
 		}
 
-		if (!is_array($data)) {
+		if ( !is_array($data) ) {
 			$this->errors[] = new WP_Error(
 				'ame_rex_unexpected_data_type',
 				sprintf('JSON parsing failed. Expected type: associative array, actual type: %s.', gettype($data))
@@ -76,13 +76,13 @@ class ameRexSettingsValidator {
 			return $this->errors;
 		}
 
-		$submittedRoles = array();
+		$submittedRoles = [];
 		foreach ($data['roles'] as $tempRole) {
 			$submittedRoles[$tempRole['name']] = $tempRole;
 		}
 
 		$wpRoles = ameRoleUtils::get_roles();;
-		$existingRoles = (isset($wpRoles->roles) && is_array($wpRoles->roles)) ? $wpRoles->roles : array();
+		$existingRoles = (isset($wpRoles->roles) && is_array($wpRoles->roles)) ? $wpRoles->roles : [];
 
 		$knownRoleIDs = array_fill_keys(
 			array_merge(array_keys($existingRoles), array_keys($submittedRoles)),
@@ -98,7 +98,7 @@ class ameRexSettingsValidator {
 		$rolesToDelete = array_diff_key($editableRoles, $submittedRoles);
 		//Don't delete the default role. The user should set a different default role first.
 		$defaultRole = get_option('default_role');
-		if (isset($rolesToDelete[$defaultRole])) {
+		if ( isset($rolesToDelete[$defaultRole]) ) {
 			unset($rolesToDelete[$defaultRole]);
 			$this->errors[] = new WP_Error(
 				'ame_rex_cannot_delete_default_role',
@@ -106,11 +106,11 @@ class ameRexSettingsValidator {
 			);
 		}
 		//Don't delete roles that are currently assigned to one or more users. This check may be slow.
-		if (count($rolesToDelete) > 0) {
+		if ( count($rolesToDelete) > 0 ) {
 			$usersByRole = count_users();
-			if (isset($usersByRole['avail_roles'])) {
+			if ( isset($usersByRole['avail_roles']) ) {
 				foreach ($usersByRole['avail_roles'] as $id => $totalUsers) {
-					if (($totalUsers > 0) && isset($rolesToDelete[$id])) {
+					if ( ($totalUsers > 0) && isset($rolesToDelete[$id]) ) {
 						unset($rolesToDelete[$id]);
 						$this->errors[] = new WP_Error(
 							'ame_rex_deleted_role_has_users',
@@ -125,8 +125,8 @@ class ameRexSettingsValidator {
 			}
 		}
 
-		$rolesToCreate = array();
-		$rolesToModify = array();
+		$rolesToCreate = [];
+		$rolesToModify = [];
 
 		//Validate all new or modified properties.
 		foreach ($submittedRoles as $id => $role) {
@@ -134,7 +134,7 @@ class ameRexSettingsValidator {
 			$isModifiedRole = false;
 
 			//Only modify existing roles if they're editable.
-			if (!$isNewRole && (!isset($editableRoles[$id]) || !isset($wpRoles->role_objects[$id]))) {
+			if ( !$isNewRole && (!isset($editableRoles[$id]) || !isset($wpRoles->role_objects[$id])) ) {
 				$this->errors[] = new WP_Error(
 					'ame_rex_role_not_editable',
 					sprintf('You don\'t have permission to edit role "%s"', $id)
@@ -143,18 +143,18 @@ class ameRexSettingsValidator {
 			}
 
 			//Validate the role ID (internal name).
-			if ($isNewRole) {
+			if ( $isNewRole ) {
 				$state = $this->validateRoleName($id, $existingRoles, $existingCapabilities);
-				if (is_wp_error($state)) {
+				if ( is_wp_error($state) ) {
 					$this->errors[] = $state;
 					continue;
 				}
 			}
 
 			//Validate the display name.
-			if ($isNewRole || ($editableRoles[$id]['name'] !== $role['displayName'])) {
+			if ( $isNewRole || ($editableRoles[$id]['name'] !== $role['displayName']) ) {
 				$state = $this->validateRoleDisplayName($role['displayName']);
-				if (is_wp_error($state)) {
+				if ( is_wp_error($state) ) {
 					$this->errors[] = $state;
 					continue;
 				}
@@ -167,23 +167,23 @@ class ameRexSettingsValidator {
 				$existingCapabilities,
 				$knownRoleIDs
 			);
-			if (!empty($capErrors)) {
+			if ( !empty($capErrors) ) {
 				$this->errors = array_merge($this->errors, $capErrors);
 				continue;
 			}
 
-			if (!$isNewRole) {
+			if ( !$isNewRole ) {
 				//Have any of the capabilities changed?
 				$oldCaps = $this->menuEditor->castValuesToBool($wpRoles->roles[$id]['capabilities']);
-				if (!$this->areAssocArraysEqual($oldCaps, $role['capabilities'])) {
+				if ( !$this->areAssocArraysEqual($oldCaps, $role['capabilities']) ) {
 					$isModifiedRole = true;
 				}
 			}
 
 			//Everything looks valid.
-			if ($isNewRole) {
+			if ( $isNewRole ) {
 				$rolesToCreate[$id] = $role;
-			} else if ($isModifiedRole) {
+			} else if ( $isModifiedRole ) {
 				$rolesToModify[$id] = $role;
 			}
 		}
@@ -193,31 +193,31 @@ class ameRexSettingsValidator {
 		//Validate user settings.
 		//-----------------------
 
-		$submittedUsers = ameUtils::get($data, 'users', array());
-		if (!is_array($submittedUsers)) {
-			$submittedUsers = array();
+		$submittedUsers = ameUtils::get($data, 'users', []);
+		if ( !is_array($submittedUsers) ) {
+			$submittedUsers = [];
 		}
-		$existingUsers = array();
-		$usersToModify = array();
+		$existingUsers = [];
+		$usersToModify = [];
 		foreach ($submittedUsers as $modifiedUser) {
 			//Skip malformed user records that are missing required fields.
-			if (!isset($modifiedUser, $modifiedUser['userId'], $modifiedUser['capabilities'], $modifiedUser['roles'])) {
+			if ( !isset($modifiedUser, $modifiedUser['userId'], $modifiedUser['capabilities'], $modifiedUser['roles']) ) {
 				continue;
 			}
 			$userId = intval(ameUtils::get($modifiedUser, 'userId', 0));
 
 			//User must exist.
 			$user = get_user_by('id', $userId);
-			if (empty($user) || !$user->exists()) {
+			if ( empty($user) || !$user->exists() ) {
 				continue;
 			}
 
-			$previousRoles = array();
-			if (isset($user->roles) && is_array($user->roles)) {
+			$previousRoles = [];
+			if ( isset($user->roles) && is_array($user->roles) ) {
 				$previousRoles = array_values($user->roles);
 			}
 			$previousCapsWithoutRoles = array_diff_key(
-				(isset($user->caps) && is_array($user->caps)) ? $user->caps : array(),
+				(isset($user->caps) && is_array($user->caps)) ? $user->caps : [],
 				array_fill_keys($previousRoles, true)
 			);
 
@@ -246,21 +246,21 @@ class ameRexSettingsValidator {
 			//Have any of the roles or capabilities actually changed?
 			$isModifiedUser = false;
 			$oldCaps = $this->menuEditor->castValuesToBool($previousCapsWithoutRoles);
-			if (!$this->areAssocArraysEqual($oldCaps, $newCapsWithoutRoles)) {
+			if ( !$this->areAssocArraysEqual($oldCaps, $newCapsWithoutRoles) ) {
 				$isModifiedUser = true;
 			}
 			//Note: The order of roles is significant.
-			if (!$this->areAssocArraysEqual($previousRoles, $newRoles)) {
+			if ( !$this->areAssocArraysEqual($previousRoles, $newRoles) ) {
 				$isModifiedUser = true;
 			}
 
 			//Don't check permissions if the user hasn't actually made any changes.
-			if (!$isModifiedUser) {
+			if ( !$isModifiedUser ) {
 				continue;
 			}
 
 			//The current user must have permission to edit this user.
-			if (!current_user_can('edit_user', $userId)) {
+			if ( !current_user_can('edit_user', $userId) ) {
 				$this->errors[] = new WP_Error(
 					'ame_uneditable_user',
 					sprintf('You don\'t have sufficient permissions to edit the user with ID #%d.', $userId)
@@ -269,16 +269,16 @@ class ameRexSettingsValidator {
 			}
 
 			//Now validation errors actually matter.
-			if (!empty($capErrors)) {
+			if ( !empty($capErrors) ) {
 				$this->errors = array_merge($this->errors, $capErrors);
 				continue;
 			}
-			if (!empty($roleErrors)) {
+			if ( !empty($roleErrors) ) {
 				$this->errors = array_merge($this->errors, $roleErrors);
 				continue;
 			}
 
-			if ($isModifiedUser) {
+			if ( $isModifiedUser ) {
 				$usersToModify[$userId] = $modifiedUser;
 				$existingUsers[$userId] = $user;
 			}
@@ -286,11 +286,11 @@ class ameRexSettingsValidator {
 
 		//Now that we know what roles exist, we can validate and save user-defined capabilities.
 		$this->userDefinedCaps = null;
-		if (isset($data['userDefinedCaps']) && is_array($data['userDefinedCaps'])) {
-			$validCaps = array();
+		if ( isset($data['userDefinedCaps']) && is_array($data['userDefinedCaps']) ) {
+			$validCaps = [];
 			foreach ($data['userDefinedCaps'] as $capability) {
 				$status = $this->validateCapabilityName($capability, $knownRoleIDs);
-				if (!is_wp_error($status)) {
+				if ( !is_wp_error($status) ) {
 					$validCaps[$capability] = true;
 				}
 			}
@@ -302,29 +302,29 @@ class ameRexSettingsValidator {
 		}
 
 		//Validate "editable roles" settings.
-		$submittedEditableRoles = ameUtils::get($data, 'editableRoles', array());
-		if (!is_array($submittedEditableRoles)) {
-			$submittedEditableRoles = array();
+		$submittedEditableRoles = ameUtils::get($data, 'editableRoles', []);
+		if ( !is_array($submittedEditableRoles) ) {
+			$submittedEditableRoles = [];
 		}
-		$allowedStrategies = array('auto', 'none', 'user-defined-list');
-		$newEditableRoles = array();
-		foreach($submittedEditableRoles as $actorId => $settings) {
-			if (!$this->userCanEditActor($actorId, $editableRoles)) {
-				if (isset($this->oldEditableRoleSettings[$actorId])) {
+		$allowedStrategies = ['auto', 'none', 'user-defined-list'];
+		$newEditableRoles = [];
+		foreach ($submittedEditableRoles as $actorId => $settings) {
+			if ( !$this->userCanEditActor($actorId, $editableRoles) ) {
+				if ( isset($this->oldEditableRoleSettings[$actorId]) ) {
 					$newEditableRoles[$actorId] = $this->oldEditableRoleSettings[$actorId];
 				}
 				continue;
 			}
 
 			//Validate the strategy.
-			if (!isset($settings['strategy']) || !in_array($settings['strategy'], $allowedStrategies)) {
+			if ( !isset($settings['strategy']) || !in_array($settings['strategy'], $allowedStrategies) ) {
 				$settings['strategy'] = 'auto';
 			}
 			//The user-defined role list, if any, must be in the form of [roleId => true].
-			if ($settings['strategy'] === 'user-defined-list') {
-				$sanitizedList = array();
-				if (is_array($settings['userDefinedList'])) {
-					foreach(array_keys($settings['userDefinedList']) as $roleId) {
+			if ( $settings['strategy'] === 'user-defined-list' ) {
+				$sanitizedList = [];
+				if ( is_array($settings['userDefinedList']) ) {
+					foreach (array_keys($settings['userDefinedList']) as $roleId) {
 						$sanitizedList[strval($roleId)] = true;
 					}
 				}
@@ -333,22 +333,17 @@ class ameRexSettingsValidator {
 				$settings['userDefinedList'] = null;
 			}
 
-			//"auto" is the default so we don't need to store it.
-			if ($settings['strategy'] === 'auto') {
-				$settings = null;
-			}
-
 			$newEditableRoles[$actorId] = $settings;
 		}
 		//Restore removed settings if the user doesn't have permission to edit them.
 		$removedSettings = array_diff_key($this->oldEditableRoleSettings, $submittedEditableRoles);
-		foreach($removedSettings as $actorId => $settings) {
-			if (!$this->userCanEditActor($actorId, $editableRoles) && isset($this->oldEditableRoleSettings[$actorId]) ) {
+		foreach ($removedSettings as $actorId => $settings) {
+			if ( !$this->userCanEditActor($actorId, $editableRoles) && isset($this->oldEditableRoleSettings[$actorId]) ) {
 				$newEditableRoles[$actorId] = $this->oldEditableRoleSettings[$actorId];
 			}
 		}
 		//Check if we have actually made any changes.
-		if (!$this->areAssocArraysRecursivelyEqual($newEditableRoles, $this->oldEditableRoleSettings)) {
+		if ( !$this->areAssocArraysRecursivelyEqual($newEditableRoles, $this->oldEditableRoleSettings) ) {
 			$this->areEditableRolesModified = true;
 		}
 
@@ -369,15 +364,15 @@ class ameRexSettingsValidator {
 	 * @param array $capabilities
 	 * @return bool|WP_Error
 	 */
-	private function validateRoleName($name, $roles = array(), $capabilities = array()) {
+	private function validateRoleName($name, $roles = [], $capabilities = []) {
 		$name = trim($name);
 
-		if ($name === '') {
+		if ( $name === '' ) {
 			return new WP_Error('ame_empty_role_name', 'Role name cannot be empty.');
 		}
 
 		//Name can only contain certain characters.
-		if (preg_match('/[^a-z0-9_]/', $name)) {
+		if ( preg_match('/[^a-z0-9_]/', $name) ) {
 			return new WP_Error(
 				'ame_invalid_characters_in_name',
 				'Role name contains invalid characters. Please use only lowercase English letters, numbers, and underscores.'
@@ -385,18 +380,18 @@ class ameRexSettingsValidator {
 		}
 
 		//Numeric names could cause problems with how PHP handles associative arrays.
-		if (is_numeric($name)) {
+		if ( is_numeric($name) ) {
 			return new WP_Error('ame_numeric_role_name', 'Numeric role names are not allowed.');
 		}
 
 		//Name must not be a duplicate.
-		if (array_key_exists($name, $roles)) {
+		if ( array_key_exists($name, $roles) ) {
 			return new WP_Error('ame_duplicate_role', 'Duplicate role name.');
 		}
 
 		//WP stores capabilities and role names in the same associative array,
 		//so they must be unique with respect to each other.
-		if (array_key_exists($name, $capabilities)) {
+		if ( array_key_exists($name, $capabilities) ) {
 			return new WP_Error('ame_role_matches_capability', 'Role name can\'t be the same as a capability name.');
 		}
 
@@ -410,11 +405,11 @@ class ameRexSettingsValidator {
 	private function validateRoleDisplayName($displayName) {
 		$displayName = trim($displayName);
 
-		if ($displayName === '') {
+		if ( $displayName === '' ) {
 			return new WP_Error('ame_empty_role_display_name', 'Role display name cannot be empty.');
 		}
 
-		if (preg_match('/[><&\r\n\t]/', $displayName)) {
+		if ( preg_match('/[><&\r\n\t]/', $displayName) ) {
 			return new WP_Error('ame_invalid_display_name_chars', 'Role display name contains invalid characters.');
 		}
 
@@ -426,26 +421,26 @@ class ameRexSettingsValidator {
 	 * @param string[] $roles
 	 * @return bool|WP_Error
 	 */
-	private function validateCapabilityName($capability, $roles = array()) {
-		if ($capability === '') {
+	private function validateCapabilityName($capability, $roles = []) {
+		if ( $capability === '' ) {
 			return new WP_Error('ame_empty_cap', 'Capability name must not be an empty string.');
 		}
 
 		//WP API allows completely arbitrary capability names, but this plugin forbids some characters
 		//for sanity's sake and to avoid XSS.
 		static $invalidCharacters = '/[><&\r\n\t]/';
-		if (preg_match($invalidCharacters, $capability)) {
+		if ( preg_match($invalidCharacters, $capability) ) {
 			return new WP_Error('ame_invalid_cap_characters', 'Capability name contains invalid characters.');
 		}
 
 		//PHP doesn't allow numeric string keys, and there's no conceivable reason to start the name with a space.
 		static $invalidFirstCharacter = '/^[\s0-9]/i';
-		if (preg_match($invalidFirstCharacter, $capability)) {
+		if ( preg_match($invalidFirstCharacter, $capability) ) {
 			return new WP_Error('ame_invalid_cap_start', 'Capability name cannot start with a number or a space.');
 		}
 
 		//Roles and caps are stored in the same array, so they must be mutually unique.
-		if (array_key_exists($capability, $roles)) {
+		if ( array_key_exists($capability, $roles) ) {
 			return new WP_Error(
 				'ame_cap_equals_role',
 				sprintf('Capability name "%s" cannot be the same as the name of a role.', $capability)
@@ -453,8 +448,8 @@ class ameRexSettingsValidator {
 		}
 
 		//Some capabilities are special and should never be directly assigned to roles.
-		static $excludedCaps = array('do_not_allow', 'exist', 'customize');
-		if (in_array($capability, $excludedCaps)) {
+		static $excludedCaps = ['do_not_allow', 'exist', 'customize'];
+		if ( in_array($capability, $excludedCaps) ) {
 			return new WP_Error(
 				'ame_create_reserved_cap',
 				'Cannot create a capability that matches a meta capability or a reserved capability.'
@@ -464,13 +459,13 @@ class ameRexSettingsValidator {
 		return true;
 	}
 
-	private function validateCapabilityAssignment($capabilities, $existingCapabilities, $roles = array()) {
+	private function validateCapabilityAssignment($capabilities, $existingCapabilities, $roles = []) {
 		//Preexisting capabilities can be granted even if they don't meet our validation requirements.
 		$newCaps = array_diff_key($capabilities, $existingCapabilities);
-		$errors = array();
+		$errors = [];
 		foreach ($newCaps as $capability => $isGranted) {
 			$validationState = $this->validateCapabilityName($capability, $roles);
-			if (is_wp_error($validationState)) {
+			if ( is_wp_error($validationState) ) {
 				$errors[] = $validationState;
 			}
 		}
@@ -506,16 +501,16 @@ class ameRexSettingsValidator {
 	 * @return array [validated-new-roles, errors]
 	 */
 	private function validateUserRoleChange($oldRoles, $newRoles, $editableRoles = null) {
-		if ($editableRoles === null) {
+		if ( $editableRoles === null ) {
 			$editableRoles = get_editable_roles();
-			if (!is_array($editableRoles)) {
-				$editableRoles = array();
+			if ( !is_array($editableRoles) ) {
+				$editableRoles = [];
 			}
 		}
-		$errors = array();
+		$errors = [];
 
-		if (!is_array($newRoles)) {
-			return array($oldRoles, array(new WP_Error('ame_rex_invalid_argument', 'Role list must be an array.')));
+		if ( !is_array($newRoles) ) {
+			return [$oldRoles, [new WP_Error('ame_rex_invalid_argument', 'Role list must be an array.')]];
 		}
 
 		$newPrimaryRole = reset($newRoles);
@@ -523,7 +518,7 @@ class ameRexSettingsValidator {
 		//NB: It is NOT an error to select a new primary role when the old one is not editable.
 		//WordPress UI simply doesn't give the option to leave the role unchanged. We shouldn't penalize users for that.
 		$oldPrimaryRole = reset($oldRoles);
-		if (is_string($oldPrimaryRole) && ($oldPrimaryRole !== '') && !isset($editableRoles[$oldPrimaryRole])) {
+		if ( is_string($oldPrimaryRole) && ($oldPrimaryRole !== '') && !isset($editableRoles[$oldPrimaryRole]) ) {
 			//Keep the existing primary role. Treat the new one as a normal "other" role.
 			$newPrimaryRole = $oldPrimaryRole;
 			array_unshift($newRoles, $oldPrimaryRole); //This might duplicate the role. We'll remove duplicates later.
@@ -537,19 +532,19 @@ class ameRexSettingsValidator {
 			array_fill_keys(array_diff($newRoles, $oldRoles), 'add'),
 			array_fill_keys(array_diff($oldRoles, $newRoles), 'remove')
 		);
-		$errorMessages = array(
+		$errorMessages = [
 			'add'    => 'You cannot give users the "%s" role.',
 			'remove' => 'You cannot remove the "%s" role from users.',
-		);
+		];
 
 		foreach ($changedRoles as $roleId => $action) {
 			$isAllowed = isset($editableRoles[$roleId]);
 
-			if (($isAllowed && ($action === 'add')) || (!$isAllowed && ($action === 'remove'))) {
+			if ( ($isAllowed && ($action === 'add')) || (!$isAllowed && ($action === 'remove')) ) {
 				$validNewRoles[] = $roleId;
 			}
 
-			if (!$isAllowed && isset($errors)) {
+			if ( !$isAllowed && isset($errors) ) {
 				$errors[] = new WP_Error(
 					sprintf('ame_rex_cannot_%1$s_role_%2$s', $action, $roleId),
 					sprintf($errorMessages[$action], htmlentities($roleId))
@@ -559,7 +554,7 @@ class ameRexSettingsValidator {
 
 		//Move the primary role to the start of the array.
 		$primaryRoleIndex = array_search($newPrimaryRole, $validNewRoles, true);
-		if ($newPrimaryRole && ($primaryRoleIndex > 0)) {
+		if ( $newPrimaryRole && ($primaryRoleIndex > 0) ) {
 			unset($validNewRoles[$primaryRoleIndex]);
 			array_unshift($validNewRoles, $newPrimaryRole);
 		}
@@ -568,7 +563,7 @@ class ameRexSettingsValidator {
 		$validNewRoles = array_unique($validNewRoles, SORT_STRING); //Requires PHP >= 5.2.9
 		ksort($validNewRoles);
 
-		return array(array_values($validNewRoles), $errors);
+		return [array_values($validNewRoles), $errors];
 	}
 
 	/**
@@ -579,20 +574,20 @@ class ameRexSettingsValidator {
 	 * @return bool
 	 */
 	private function userCanEditActor($actorId, $currentEditableRoles) {
-		if ($actorId === 'special:super_admin') {
+		if ( $actorId === 'special:super_admin' ) {
 			return is_super_admin();
 		}
 
 		list($type, $name) = explode(':', $actorId, 2);
-		if ($type === 'user') {
+		if ( $type === 'user' ) {
 			$victim = get_user_by('login', $name);
-			if ($victim) {
+			if ( $victim ) {
 				return current_user_can('edit_user', $victim->ID);
 			}
 			return current_user_can('edit_users');
 		}
 
-		if ($type === 'role') {
+		if ( $type === 'role' ) {
 			return isset($currentEditableRoles[$name]);
 		}
 
@@ -608,7 +603,7 @@ class ameRexSettingsValidator {
 	 * @return bool
 	 */
 	private function areAssocArraysEqual($a, $b) {
-		if (count($a) !== count($b)) {
+		if ( count($a) !== count($b) ) {
 			return false;
 		}
 		$sameItems = array_intersect_assoc($a, $b);
@@ -623,18 +618,18 @@ class ameRexSettingsValidator {
 	 * @return bool
 	 */
 	private function areAssocArraysRecursivelyEqual($a, $b) {
-		if (count($a) !== count($b)) {
+		if ( count($a) !== count($b) ) {
 			return false;
 		}
 		$sameKeys = array_intersect_key($a, $b);
-		if (count($sameKeys) !== count($a)) {
+		if ( count($sameKeys) !== count($a) ) {
 			return false;
 		}
-		foreach($sameKeys as $key => $valueA) {
+		foreach ($sameKeys as $key => $valueA) {
 			$valueB = $b[$key];
-			if ($valueA !== $valueB) {
-				if (is_array($valueA) && is_array($valueB)) {
-					if (!$this->areAssocArraysRecursivelyEqual($valueA, $valueB)) {
+			if ( $valueA !== $valueB ) {
+				if ( is_array($valueA) && is_array($valueB) ) {
+					if ( !$this->areAssocArraysRecursivelyEqual($valueA, $valueB) ) {
 						return false;
 					}
 				} else {

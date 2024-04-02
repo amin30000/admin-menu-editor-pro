@@ -8,9 +8,17 @@
 	<?php require AME_ROOT_DIR . '/modules/actor-selector/actor-selector-template.php'; ?>
 
 	<div data-bind="foreach: sections">
-		<div class="ame-twm-section ws-ame-postbox" data-bind="css: { 'ws-ame-closed-postbox': !isOpen() }">
+		<div class="ame-twm-section ws-ame-postbox"
+		     data-bind="css: { 'ws-ame-closed-postbox': !isOpen() }, attr: { id: htmlId }">
 			<div class="ws-ame-postbox-header">
-				<h3 data-bind="text: label"></h3>
+				<h3>
+					<span data-bind="text: label"></span>
+					<!-- ko if: description -->
+						<a data-bind="attr: {title: descriptionHtml}" class="ws_tooltip_trigger">
+							<span class="dashicons dashicons-info"></span>
+						</a>
+					<!-- /ko -->
+				</h3>
 				<button class="ws-ame-postbox-toggle" data-bind="click: toggle"></button>
 			</div>
 			<div class="ws-ame-postbox-content">

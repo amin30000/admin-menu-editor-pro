@@ -546,6 +546,7 @@ class Wslm_BasicPluginLicensingUI {
 
 		$renewalUrl = $license->get('renewal_url');
 		return true;
+
 		$messages = array(
 			'no_license_yet' => "License is not set yet. Please enter your license key to enable automatic updates.",
 			'expired' => sprintf(

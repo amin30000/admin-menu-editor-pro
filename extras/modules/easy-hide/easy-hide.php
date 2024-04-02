@@ -466,6 +466,10 @@ class Category implements JsonSerializable {
 	protected $itemSortOrder;
 	protected $priority = null;
 	protected $subtitle = null;
+	/**
+	 * @var null|string
+	 */
+	protected $tooltip = null;
 
 	protected $tableView = [];
 
@@ -520,6 +524,15 @@ class Category implements JsonSerializable {
 		return $this;
 	}
 
+	/**
+	 * @param string|null $tooltip
+	 * @return $this
+	 */
+	public function setTooltip($tooltip) {
+		$this->tooltip = $tooltip;
+		return $this;
+	}
+
 	#[\ReturnTypeWillChange]
 	public function jsonSerialize() {
 		$result = [
@@ -546,6 +559,9 @@ class Category implements JsonSerializable {
 		}
 		if ( !empty($this->subtitle) ) {
 			$result['subtitle'] = $this->subtitle;
+		}
+		if ( !empty($this->tooltip) ) {
+			$result['tooltip'] = $this->tooltip;
 		}
 		if ( $this->priority !== null ) {
 			$result['priority'] = $this->priority;

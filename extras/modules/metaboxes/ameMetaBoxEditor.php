@@ -450,7 +450,7 @@ class ameMetaBoxEditor extends ameModule implements ameExportableModule {
 			$this->settings = $settings;
 			$this->saveSettings();
 
-			wp_redirect($this->getTabUrl(array('updated' => 1)));
+			wp_redirect($this->getTabUrl(ameUtils::withSelectedActor(['updated' => 1], $post)));
 			exit;
 		}
 	}
@@ -506,8 +506,10 @@ class ameMetaBoxEditor extends ameModule implements ameExportableModule {
 		);
 
 		$boxesToSelectors = array(
-			'submitdiv' => '#editor .edit-post-post-schedule',
-			'formatdiv' => '#editor .editor-post-format, #editor .edit-post-post-schedule + .components-panel__row',
+			'submitdiv'    => '#editor .edit-post-post-schedule',
+			'authordiv'    => '#editor .edit-post-post-author',
+			'formatdiv'    => '#editor .editor-post-format, #editor .edit-post-post-schedule + .components-panel__row',
+			'revisionsdiv' => '#editor .components-panel .edit-post-last-revision__panel',
 		);
 
 		$panelsToRemove = array();

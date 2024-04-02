@@ -2,8 +2,8 @@
 Contributors: whiteshadow
 Tags: admin, dashboard, menu, security, wpmu
 Requires at least: 4.7
-Tested up to: 6.4.1
-Stable tag: 2.22.1
+Tested up to: 6.4
+Stable tag: 2.23.3
 
 Lets you directly edit the WordPress admin menu. You can re-order, hide or rename existing menus, add custom menus and more.
 
@@ -82,6 +82,29 @@ Here are some usage tips and other things that can be good to know when using th
 == Changelog ==
 
 [Get the latest version here.](http://adminmenueditor.com/updates/)
+
+= 2.23.3 (2024-01-21) =
+* Hiding the "Author" meta box now also hides the corresponding section of the "Summary" panel in the Gutenberg block editor.
+* Updated the "Meta Boxes" tab to automatically reselect the previously selected role after saving changes.
+* Fixed dashboard widget visibility not being saved. 
+
+= 2.23.2 (2024-01-20) =
+* Fixed meta box visibility not being saved. This problem was likely related to the recent Lodash 4 migration.
+
+= 2.23.1 (2024-01-19) =
+* Hotfix: Fixed users that have the Administrator role and one or more additional roles unexpectedly losing the ability to edit or assign certain roles. This was caused by a preexisting but previously unknown bug that was exposed by the 2.23 update changing the default "Editable roles" setting for the Administrator role to "Leave unchanged". Users who have manually set it to "Automatic" or "Custom" are likely unaffected.
+
+= 2.23 (2024-01-17) =
+##### Added
+* Added way to hide posts created by other users. It's a group of new settings in the "Tweaks" tab. It works with posts, pages, media, and custom post types that use the default admin UI.
+	* Limitations: This feature only affects post tables like the one shown under "Posts -> All Posts". Hiding other users' posts from someone doesn't prevent them from opening those posts by following a direct link, and they can still edit the posts if they have the necessary capabilities (e.g. `edit_others_posts`).
+* Made the Gutenberg panel "Revisions" hideable by hiding the corresponding meta box.
+
+##### Changed
+* Made menu editor toolbars "sticky". They will now stay below the admin bar when scrolling down, which can be useful when editing very long menus.
+* Changed the default "editable roles" setting for the Administrator role from "Automatic" to "Leave unchanged". This means that users with the Administrator role will now be able to edit any user, even if the user being edited has more capabilities than the Administrator role (which can only happen with custom/modified roles). Of course, you can still configure this by clicking "Editable roles" in the "Roles" tab.
+* Restored the "custom permissions" and "custom item" indicators for the "Modern" editor color scheme. Previously, they were not visible in the menu editor when using that color scheme.
+* Migrated to Lodash 4.
 
 = 2.22.1 (2023-11-09) =
 * Fixed a conflict with Query Monitor that had the potential to cause a fatal error in some rare situations (no errors actually reported by users so far).

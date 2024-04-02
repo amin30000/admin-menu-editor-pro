@@ -392,6 +392,8 @@ class ameTweakManager extends amePersistentModule {
 			$section->setPriority($priority);
 		}
 		$this->sections[$section->getId()] = $section;
+
+		return $section;
 	}
 
 	protected function getTemplateVariables($templateName) {
@@ -417,7 +419,8 @@ class ameTweakManager extends amePersistentModule {
 				'ame-ko-extensions',
 			]
 		);
-		wp_enqueue_script('ame-tweak-manager');
+		//Enqueue in the footer.
+		wp_enqueue_script('ame-tweak-manager', '', [], false, true);
 
 		//Reselect the same actor.
 		$query = $this->menuEditor->get_query_params();
@@ -430,6 +433,9 @@ class ameTweakManager extends amePersistentModule {
 		$scriptData['selectedActor'] = $selectedActor;
 		$scriptData['defaultCodeEditorSettings'] = $codeEditorSettings;
 		wp_localize_script('ame-tweak-manager', 'wsTweakManagerData', $scriptData);
+
+		//Enqueue tooltip script.
+		wp_enqueue_script('jquery-qtip');
 	}
 
 	protected function getScriptData() {
@@ -445,11 +451,7 @@ class ameTweakManager extends amePersistentModule {
 
 		$sectionData = [];
 		foreach ($this->sections as $section) {
-			$sectionData[] = [
-				'id'       => $section->getId(),
-				'label'    => $section->getLabel(),
-				'priority' => $section->getPriority(),
-			];
+			$sectionData[] = $section->toArray();
 		}
 
 		return [
@@ -543,6 +545,7 @@ class ameTweakManager extends amePersistentModule {
 			'sidebar-widgets'                    => null,
 			'sidebars'                           => null,
 		];
+		$enabledSections = apply_filters('admin_menu_editor-hideable_tweak_sections', $enabledSections);
 
 		$postEditorCategory = $store->getOrCreateCategory('post-editor', 'Editor', null, false, 0, 0);
 		$parentCategories = [
@@ -570,6 +573,11 @@ class ameTweakManager extends amePersistentModule {
 				0,
 				0
 			);
+
+			$description = $section->getDescription();
+			if ( !empty($description) ) {
+				$category->setTooltip($description);
+			}
 
 			$categoriesBySection[$sectionId] = $category;
 		}
@@ -671,9 +679,12 @@ class ameTweakSection {
 
 	private $priority = 0;
 
-	public function __construct($id, $label) {
+	private $description = '';
+
+	public function __construct($id, $label, $description = '') {
 		$this->id = $id;
 		$this->label = $label;
+		$this->description = $description;
 	}
 
 	public function getId() {
@@ -691,5 +702,28 @@ class ameTweakSection {
 	public function setPriority($priority) {
 		$this->priority = $priority;
 		return $this;
+	}
+
+	public function setDescription($description) {
+		$this->description = $description;
+		return $this;
+	}
+
+	public function getDescription() {
+		return $this->description;
+	}
+
+	public function toArray() {
+		$sectionData = [
+			'id'       => $this->getId(),
+			'label'    => $this->getLabel(),
+			'priority' => $this->getPriority(),
+		];
+
+		if ( !empty($this->description) ) {
+			$sectionData['description'] = $this->getDescription();
+		}
+
+		return $sectionData;
 	}
 }
