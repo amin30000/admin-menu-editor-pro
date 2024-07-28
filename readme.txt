@@ -2,8 +2,8 @@
 Contributors: whiteshadow
 Tags: admin, dashboard, menu, security, wpmu
 Requires at least: 4.7
-Tested up to: 6.4
-Stable tag: 2.23.3
+Tested up to: 6.6
+Stable tag: 2.26.1
 
 Lets you directly edit the WordPress admin menu. You can re-order, hide or rename existing menus, add custom menus and more.
 
@@ -82,6 +82,78 @@ Here are some usage tips and other things that can be good to know when using th
 == Changelog ==
 
 [Get the latest version here.](http://adminmenueditor.com/updates/)
+
+= 2.26.1 (2024-07-17) =
+##### Added
+* Added the "CSS classes" field to submenu items. You can use it to add custom CSS classes to menu items. Previously, only top level menus had this field.
+* Updated the capability database. The plugin uses this to categorize the role capabilities shown in the "Roles" tab.
+
+##### Fixed
+* Fixed a bug introduced in version 2.26 that prevented certain blocks from rendering in the default block editor. This only affected blocks that call the "block-renderer" REST API.
+
+= 2.26 (2024-07-16) =
+##### Added
+* Added a "Nav Menus" tab that lets you hide navigation menu items from roles and users. It supports both classic navigation menus and block-based navigation menus used by FSE themes. In addition to per-role settings, you can also hide menu items from all logged-in users or all logged-out users.
+
+##### Fixed
+* Fixed a bug introduced in version 2.25 that could cause the "Redirects" tab to be blank in some configurations. The bug also triggered this JS error: "settings.redirects.map is not a function".
+* Fixed a WooCommerce conflict where two "Subscriptions" menu items would appear when AME was active.
+
+##### Changed
+* Tested with WP 6.6-RC3 and WP 6.7-alpha.
+
+= 2.25 (2024-07-02) =
+##### Added
+* Added background color settings for submenu item hover states, both for the admin menu and for the Toolbar.
+* Added a background color setting for the currently active admin menu item.
+* Added an option to open the admin menu logo link in a new tab.
+* Added an option to automatically delete settings associated with missing roles and users. This only applies to certain settings, such as menu permissions and login redirects. "Missing" means that the role or user doesn't exist on the current site, which usually happens when it has been deleted. In Multisite, it can also happen if different subsites have different roles. By default, this option is enabled on regular sites and disabled in Multisite.
+
+##### Fixed
+* Fixed a WooCommerce conflict where two "Orders" menu items would appear when AME was active.
+* Fixed a rare PHP warning "Undefined array key "parent" in ... menu-editor-core.php".
+* Fixed a potential crash if the global `$menu` variable is not a native array but is still array-like.
+* Improved compatibility with old versions of UiPress.
+
+##### Changed
+* Improved menu drag & drop from the top level to the submenu. You can now drop items anywhere in the active submenu, not just at the bottom.
+* Tested with WP 6.5.5.
+
+= 2.24.3 (2024-05-15) =
+##### Fixed
+* Fixed the WooCommerce admin page header staying in its old place when changing the admin menu width, the Toolbar height, or when hiding the Toolbar completely. Now the page header will be automatically moved or resized so that it's still fully visible.
+* Fixed custom menu items that use the "Embed WP page" feature sometimes having different item URLs for different users or having the URL change unnecessarily. With this update, the URL will change the next time you save the admin menu, but after that it should generally stay static unless you select a different embedded page.
+* Fixed synced patterns (a.k.a. reusable blocks) not working when AME Pro is active and *any* Gutenberg blocks are hidden.
+* Fixed a potential PHP warning about array indexing in `hide-others-posts.php` when at least one of the "Hide Other Users' Posts" options was enabled in the "Tweaks" tab.
+* Updated the MailPoet compatibility fix for MailPoet 4.49.1. Now custom admin menu colors should once again work on MailPoet's admin pages.
+
+= 2.24.2 (2024-04-29) =
+* Fixed a fatal error "Cannot use a scalar value as an array" when trying to save changes on the "Easy Hide" page.
+
+= 2.24.1 (2024-04-22) =
+* Fixed a conflict with UIPress that was introduced in version 2.24. The conflict prevented most admin menu settings from being applied. For example, hidden menu items would become visible, menu order would reset, renamed items would display the old title, and so on. Custom menu permissions were still effective, so unchecked items would be visible but inaccessible.
+
+= 2.24 (2024-04-15) =
+##### Added
+* Added a way to prevent a role from editing or deleting media files that were uploaded by other users. You can find the new settings in the "Tweaks" tab, in a section named "Media Library Restrictions".
+* Added the ability to hide and/or remove block patterns.
+* Added an option to hide the "Media" tab in the Gutenberg block inserter.
+
+##### Fixed
+* Fixed inability to save various menu styles and menu separator styles without creating an admin menu configuration first. This issue could cause errors when saving changes in the Admin Customizer.
+* Fixed the Gutenberg block editor and the block-based widget editor having unnecessary empty space at the top when the Toolbar (Admin Bar) is hidden.
+* Fixed the Gutenberg editor overlapping the admin menu when increasing the width of the admin menu.
+* Fixed hidden special blocks like "Pattern placeholder" and "Legacy Widget" showing up in the "Hide Gutenberg Blocks" section even though they are not actually visible in the block inserter.
+* Fixed a conflict between unchecking the "Show the Toolbar" option and enabling "Full height" admin menu mode in the Admin Customizer. This could cause the first item of the admin menu to go off the screen, making it invisible.
+* Various other layout fixes.
+* Fixed an Admin Ccustomizer bug where changing admin menu settings in a certain order and then saving the changes could result in some of those changes being lost. For example, this could happen if you changed the menu bar width, then changed the menu separator margins, then saved the changes - the menu bar width would be reset.
+* Made the "Download as admin theme" feature available even when the current session doesn't have any unsaved changes.
+* Fixed "Warning: Attempt to read property "cap_key" on null" if a metadata update happens for a non-existent user or the user can't be retrieved.
+* Fixed the "Media" menu always being highlighted as "new" when the "Enable Media Replace" plugin is active.
+
+##### Changed
+* The "Hide Profile Fields" tweaks now also apply to the "Edit User" screen.
+* Tested up to WordPress 6.5.2.
 
 = 2.23.3 (2024-01-21) =
 * Hiding the "Author" meta box now also hides the corresponding section of the "Summary" panel in the Gutenberg block editor.

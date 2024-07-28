@@ -33,7 +33,7 @@
         'yahnis-elsts/plugin-update-checker' => array(
             'pretty_version' => 'dev-master',
             'version' => 'dev-master',
-            'reference' => '0a8fd4ad3a79f95f4bbadaa7eba6c815a72c60ee',
+            'reference' => '97dfe23d158b8af0ea3f7652e678688da6e52e51',
             'type' => 'library',
             'install_path' => __DIR__ . '/../yahnis-elsts/plugin-update-checker',
             'aliases' => array(

@@ -536,8 +536,6 @@ class Wslm_BasicPluginLicensingUI {
 	}
 
 	public function printPluginRowNotice() {
-		return;
-
 		//If there's anything wrong with the plugin's license, output a notice under the plugin row in "Plugins".
 		$license = $this->licenseManager->getLicense();
 		if ( !$this->currentUserCanManageLicense() || ($license->getStatus() === 'valid') ) {

@@ -611,9 +611,9 @@ class ameRoleEditor extends amePersistentProModule {
 	}
 
 	protected function analyseAdminMenuCapabilities() {
-		$menu = $this->menuEditor->get_active_admin_menu();
-		if ( !empty($menu['tree']) ) {
-			foreach ($menu['tree'] as $item) {
+		$tree = $this->menuEditor->get_active_admin_menu_tree();
+		if ( !empty($tree) ) {
+			foreach ($tree as $item) {
 				$this->analyseMenuItem($item);
 			}
 		}

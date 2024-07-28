@@ -24,7 +24,8 @@ class ameOtherUserPostHider extends ameModule {
 	 * @return void
 	 */
 	public function filterPostQuery($query) {
-		if ( !$this->isRelevantQuery($query) ) {
+		$relevantPostTypes = $this->getRelevantPostTypes($query);
+		if ( empty($relevantPostTypes) ) {
 			return;
 		}
 		//Note: The tweak manager will only call our "enable..." callback if it determines that
@@ -34,15 +35,15 @@ class ameOtherUserPostHider extends ameModule {
 		if ( empty($currentUser) || empty($currentUser->ID) ) {
 			return;
 		}
-		$postType = $query->get('post_type');
-		if ( empty($postType) ) {
-			return; //Should never happen because isRelevantQuery() checks the post type.
-		}
 
+		//getRelevantPostTypes() should have already checked is_main_query().
+		//phpcs:ignore WordPressVIPMinimum.Hooks.PreGetPosts.PreGetPosts
 		$query->set('author', $currentUser->ID);
 
 		//Filter the number of posts by status to exclude posts that the user can't see.
-		$this->countFilterEnabled[$postType] = true;
+		foreach ($relevantPostTypes as $postType) {
+			$this->countFilterEnabled[$postType] = true;
+		}
 
 		if ( !$this->postCountHooksAdded ) {
 			add_filter('wp_count_posts', [$this, 'filterPostCounts'], 10, 3);
@@ -131,7 +132,7 @@ class ameOtherUserPostHider extends ameModule {
 	 * @param \ameTweakManager $manager
 	 */
 	public function registerTweaks($manager) {
-		$section = $manager->addSection(self::TWEAK_SECTION_ID, 'Hide Other Users\' Posts', 100);
+		$section = $manager->addSection(self::TWEAK_SECTION_ID, 'Hide Other Users\' Posts', 60);
 
 		$notes = [
 			'Applies to post listings in the admin dashboard, like "Posts -> All Posts".',
@@ -181,36 +182,53 @@ class ameOtherUserPostHider extends ameModule {
 
 	/**
 	 * @param \WP_Query $query
-	 * @return bool
+	 * @return string[]
 	 */
-	private function isRelevantQuery($query) {
+	private function getRelevantPostTypes($query) {
 		if (
 			//Sanity check: Is it even a real query?
 			!($query instanceof WP_Query)
 			//We only care about queries made on admin pages.
 			|| !$query->is_admin
 		) {
-			return false;
+			return [];
 		}
 
-		//Is the restriction enabled for this post type?
-		$postType = $query->get('post_type');
-		if ( empty($postType) || empty($this->postFilterEnabledForPostType[$postType]) ) {
-			return false;
+		//The post type can be a string or an array of strings.
+		$postTypeQueryVar = $query->get('post_type');
+		if ( empty($postTypeQueryVar) ) {
+			return [];
+		}
+		$postTypes = is_array($postTypeQueryVar) ? $postTypeQueryVar : [$postTypeQueryVar];
+
+		//Is the restriction enabled for all of these post types?
+		//(Usually, there will be only one, but let's support multiple just in case.)
+		foreach ($postTypes as $postType) {
+			if (
+				empty($postType) || !is_scalar($postType) //Sanity check.
+				|| empty($this->postFilterEnabledForPostType[$postType])
+			) {
+				return [];
+			}
 		}
 
 		//Special case: Retrieving media in grid mode. WordPress uses AJAX to load the media.
 		if (
-			($postType === 'attachment')
+			($postTypeQueryVar === 'attachment')
 			&& wp_doing_ajax()
+			//phpcs:disable WordPress.Security.NonceVerification.Recommended -- Not taking actions, just filtering.
 			&& isset($_REQUEST['action'])
 			&& ($_REQUEST['action'] === 'query-attachments')
+			//phpcs:enable WordPress.Security.NonceVerification.Recommended
 		) {
-			return true;
+			return $postTypes;
 		}
 
 		//Normal case: An admin page with a list of posts.
-		return $query->is_main_query() && $this->isSupportedAdminPage();
+		if ( $query->is_main_query() && $this->isSupportedAdminPage() ) {
+			return $postTypes;
+		}
+		return [];
 	}
 
 	public function addSectionToHideableSections($sections) {

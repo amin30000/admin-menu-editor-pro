@@ -1,10 +1,11 @@
 <?php
 $result = [
 	'sections' => [
-		'profile'          => ['label' => 'Hide Profile Fields', 'priority' => 80],
-		'sidebar-widgets'  => ['label' => 'Hide Sidebar Widgets', 'priority' => 100],
-		'sidebars'         => ['label' => 'Hide Sidebars', 'priority' => 120],
-		'environment-type' => ['label' => 'Environment Type', 'priority' => 30],
+		'profile'           => ['label' => 'Hide Profile Fields', 'priority' => 80],
+		'sidebar-widgets'   => ['label' => 'Hide Sidebar Widgets', 'priority' => 100],
+		'sidebars'          => ['label' => 'Hide Sidebars', 'priority' => 120],
+		'gutenberg-general' => ['label' => 'Gutenberg (Block Editor)', 'priority' => 25],
+		'environment-type'  => ['label' => 'Environment Type', 'priority' => 30],
 	],
 
 	'tweaks' => [
@@ -36,13 +37,17 @@ $result = [
 		],
 
 		'hide-gutenberg-options'    => [
-			'label'    => 'Hide the Gutenberg options menu (three vertical dots)',
-			'selector' => '#editor .edit-post-header__settings .edit-post-more-menu,'
+			'label'         => 'Hide the Gutenberg options menu (three vertical dots)',
+			'selector'      => '#editor .edit-post-header__settings .edit-post-more-menu,'
 				. ' #editor .edit-post-header__settings .interface-more-menu-dropdown',
+			'section'       => 'gutenberg-general',
+			'hideableLabel' => 'Gutenberg options menu',
 		],
 		'hide-gutenberg-fs-wp-logo' => [
-			'label'    => 'Hide the WordPress logo in Gutenberg fullscreen mode',
-			'selector' => '#editor .edit-post-header a.components-button[href^="edit.php"]',
+			'label'         => 'Hide the WordPress logo in Gutenberg fullscreen mode',
+			'selector'      => '#editor .edit-post-header a.components-button[href^="edit.php"]',
+			'section'       => 'gutenberg-general',
+			'hideableLabel' => 'WordPress logo in Gutenberg fullscreen mode',
 		],
 
 		'show-environment-in-toolbar'  => [
@@ -57,11 +62,46 @@ $result = [
 			'className'   => 'ameEnvironmentColorTweak',
 			'includeFile' => __DIR__ . '/ameEnvironmentColorTweak.php',
 		],
+
+		'hide-inserter-media-tab' => [
+			'label'         => 'Hide the "Media" tab in the block inserter',
+			'selector'      => '#editor #tab-panel-0-media',
+			'section'       => 'gutenberg-general',
+			'hideableLabel' => '"Media" tab in the block inserter',
+		],
+
+		'hide-block-patterns'        => [
+			'label'         => 'Hide block patterns',
+			'isGroup'       => true,
+			'section'       => 'gutenberg-general',
+			'hideableLabel' => 'Block patterns',
+		],
+		'hide-patterns-tab-with-css' => [
+			'label'         => 'Hide the "Patterns" tab in the block inserter',
+			'selector'      => '#editor #tab-panel-0-patterns',
+			'parent'        => 'hide-block-patterns',
+			'section'       => 'gutenberg-general',
+			'hideableLabel' => '"Patterns" tab in the block inserter',
+		],
+		'disable-remote-patterns'    => [
+			'label'       => 'Disable remote patterns',
+			'className'   => ameDisableRemotePatternsTweak::class,
+			'includeFile' => __DIR__ . '/ameDisableRemotePatternsTweak.php',
+			'parent'      => 'hide-block-patterns',
+			'section'     => 'gutenberg-general',
+		],
+		'unregister-all-patterns'    => [
+			'label'       => 'Unregister all visible patterns (Caution: Also affects "Appearance → Editor")',
+			'className'   => ameUnregisterPatternsTweak::class,
+			'includeFile' => __DIR__ . '/ameUnregisterPatternsTweak.php',
+			'parent'      => 'hide-block-patterns',
+			'section'     => 'gutenberg-general',
+		],
 	],
 ];
 
 //region Profile tweaks
-$profileScreens = ['profile'];
+$profileScreens = ['profile', 'user-edit'];
 $profileSection = 'profile';
 $profileTweaks = [
 	'hide-profile-group-personal-info'   => [
@@ -95,7 +135,7 @@ $profileTweaks = [
 	],
 
 	'hide-profile-group-name'   => [
-		'label'   => 'Name',
+		'label'     => 'Name',
 		'jquery-js' => 'jQuery("#profile-page tr.user-user-login-wrap").closest("table").prev("h2").addBack().hide();',
 	],
 	'hide-profile-user-login'   => [
@@ -125,7 +165,7 @@ $profileTweaks = [
 	],
 
 	'hide-profile-group-contact-info' => [
-		'label'   => 'Contact Info',
+		'label'     => 'Contact Info',
 		'jquery-js' => 'jQuery("#profile-page tr.user-email-wrap").closest("table").prev("h2").addBack().hide();',
 	],
 	'hide-profile-email'              => [
@@ -155,7 +195,7 @@ if ( is_callable('wp_get_user_contact_methods') ) {
 //"About Yourself" section.
 $profileTweaks = array_merge($profileTweaks, [
 	'hide-profile-group-about-yourself' => [
-		'label'   => 'About Yourself',
+		'label'     => 'About Yourself',
 		'jquery-js' => 'jQuery("#profile-page tr.user-description-wrap").closest("table").prev("h2").addBack().hide();',
 	],
 

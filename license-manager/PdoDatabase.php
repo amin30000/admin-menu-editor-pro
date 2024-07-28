@@ -8,6 +8,8 @@ class Wslm_PdoDatabase extends Wslm_Database {
 	function __construct($host, $dbname, $username, $password) {
 		$dsn = 'mysql:dbname=' . $dbname . ';host=' . $host;
 		$this->pdo = new PDO($dsn, $username, $password);
+		//Use UTF-8 (utf8mb4) for everything.
+		$this->pdo->query('SET NAMES \'utf8mb4\'');
 	}
 
 	public function getResults($query, $parameters = array()) {

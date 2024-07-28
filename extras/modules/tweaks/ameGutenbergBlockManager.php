@@ -49,7 +49,7 @@ class ameGutenbergBlockManager {
 			self::SCRIPT_HANDLE,
 			plugins_url('gutenberg-block-detector.js', __FILE__),
 			array('jquery', 'wp-dom-ready'),
-			'20210218-4',
+			'20240509',
 			true
 		);
 
@@ -102,17 +102,30 @@ class ameGutenbergBlockManager {
 	}
 
 	private function saveDetectedItems($blocks, $categories) {
+		$usedCategories = [];
+
 		//Index the lists by name or slug.
 		$blockIndex = array();
 		foreach ($blocks as $block) {
 			$name = $block['name'];
 			unset($block['name']);
 			$blockIndex[$name] = $block;
+
+			//Track which categories are actually used.
+			if ( !empty($block['category']) ) {
+				$usedCategories[$block['category']] = true;
+			}
 		}
 		$categoryIndex = array();
 		foreach ($categories as $category) {
 			$slug = $category['slug'];
 			unset($category['slug']);
+
+			//Skip categories that don't contain any blocks.
+			if ( empty($usedCategories[$slug]) ) {
+				continue;
+			}
+
 			$categoryIndex[$slug] = $category;
 		}
 
@@ -160,7 +173,7 @@ class ameGutenbergBlockManager {
 			return;
 		}
 
-		$manager->addSection(self::SECTION_ID, 'Hide Gutenberg Blocks', 40);
+		$manager->addSection(self::SECTION_ID, 'Hide Gutenberg Blocks', 70);
 
 		if ( $tweakFilter !== null ) {
 			$filteredBlocks = array();
@@ -176,6 +189,13 @@ class ameGutenbergBlockManager {
 			//Create stub tweaks that represent each block category.
 			$categories = ameUtils::get($data, 'categories', array());
 			foreach ($categories as $catId => $category) {
+				//Skip the special "reusable" category because it will always be empty.
+				//Individual reusable blocks are not detected by our script and the "core/block"
+				//block that would appear in this category cannot be hidden for compat. reasons.
+				if ( $catId === 'reusable' ) {
+					continue;
+				}
+
 				$parentTweak = new ameDelegatedTweak(
 					self::PARENT_PREFIX . $catId,
 					ameUtils::get($category, 'title', $catId),
@@ -188,6 +208,11 @@ class ameGutenbergBlockManager {
 
 		$theCallback = array($this, 'flagBlockAsHidden');
 		foreach ($blocks as $id => $block) {
+			//Skip blocks that don't appear in the block inserter.
+			if ( isset($block['supportsInserter']) && !$block['supportsInserter'] ) {
+				continue;
+			}
+
 			$tweak = new ameDelegatedTweak(
 				self::TWEAK_PREFIX . $id,
 				ameUtils::get($block, 'title', $id),
@@ -217,6 +242,12 @@ class ameGutenbergBlockManager {
 			//Unfortunately, we can't get all available blocks via PHP, so we rely on the cached
 			//list of registered blocks that was supplied by our JS script.
 			$registeredBlocks = array_keys(ameUtils::get($this->getDetectedItems(), 'blocks', array()));
+			//Some blocks support core editor functionality and should be included even if not detected.
+			$registeredBlocks = array_unique(array_merge($registeredBlocks, [
+				'core/block', //Required for reusable blocks (a.k.a. synced patterns) to work.
+				'core/pattern' //Not sure what this one does, but sounds important.
+			]));
+
 			$result = array_diff($registeredBlocks, $this->hiddenBlocks);
 
 			//Reindex the array. array_diff() can create "holes" in the array, which means that

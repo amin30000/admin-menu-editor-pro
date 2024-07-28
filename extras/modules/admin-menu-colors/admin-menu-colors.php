@@ -42,10 +42,12 @@ class MenuColorsModule extends \ameModule {
 		'menu-current-icon'       => 'Current icon',
 		'menu-current-background' => 'Current background',
 
-		'menu-submenu-text'         => 'Submenu text',
-		'menu-submenu-background'   => 'Submenu background',
-		'menu-submenu-focus-text'   => 'Submenu highlight text',
-		'menu-submenu-current-text' => 'Submenu current text',
+		'menu-submenu-text'               => 'Submenu text',
+		'menu-submenu-background'         => 'Submenu background',
+		'menu-submenu-focus-text'         => 'Submenu highlight text',
+		'menu-submenu-focus-background'   => 'Submenu highlight background',
+		'menu-submenu-current-text'       => 'Submenu current text',
+		'menu-submenu-current-background' => 'Submenu current background',
 
 		'menu-bubble-text'               => 'Bubble text',
 		'menu-bubble-background'         => 'Bubble background',
@@ -267,7 +269,7 @@ class MenuColorsModule extends \ameModule {
 				$g->variable('menu-highlight-background'),
 			],
 
-			'menu-submenu-text'         => [
+			'menu-submenu-text'               => [
 				$colorValueGetter('menu-submenu-text'),
 				$g->mixColors(
 					$g->variable('base-color'),
@@ -277,17 +279,23 @@ class MenuColorsModule extends \ameModule {
 					29.5
 				),
 			],
-			'menu-submenu-background'   => [
+			'menu-submenu-background'         => [
 				$colorValueGetter('menu-submenu-background'),
 				$g->darken($g->variable('base-color'), 7),
 			],
-			'menu-submenu-focus-text'   => [
+			'menu-submenu-focus-text'         => [
 				$colorValueGetter('menu-submenu-focus-text'),
 				$g->variable('highlight-color'),
 			],
-			'menu-submenu-current-text' => [
+			'menu-submenu-focus-background'   => [
+				$colorValueGetter('menu-submenu-focus-background'),
+			],
+			'menu-submenu-current-text'       => [
 				$colorValueGetter('menu-submenu-current-text'),
 				$g->variable('text-color'),
+			],
+			'menu-submenu-current-background' => [
+				$colorValueGetter('menu-submenu-current-background'),
 			],
 
 			'menu-bubble-text'               => [
@@ -405,7 +413,10 @@ class MenuColorsModule extends \ameModule {
 				$li . '.wp-has-current-submenu.opensub .wp-submenu a:focus',
 				$li . '.wp-has-current-submenu.opensub .wp-submenu a:hover',
 			],
-			['color' => $g->variable('menu-submenu-focus-text')]
+			[
+				'color'            => $g->variable('menu-submenu-focus-text'),
+				'background-color' => $g->variable('menu-submenu-focus-background'),
+			]
 		);
 
 		$g->addRuleSet(
@@ -414,7 +425,10 @@ class MenuColorsModule extends \ameModule {
 				$li . ' a.wp-has-current-submenu:focus + .wp-submenu li.current a',
 				$li . '.wp-has-current-submenu.opensub .wp-submenu li.current a',
 			],
-			['color' => $g->variable('menu-submenu-current-text')]
+			[
+				'color'            => $g->variable('menu-submenu-current-text'),
+				'background-color' => $g->variable('menu-submenu-current-background'),
+			]
 		);
 
 		$g->addRuleSet(
@@ -426,7 +440,10 @@ class MenuColorsModule extends \ameModule {
 				$li . '.wp-has-current-submenu.opensub .wp-submenu li.current a:hover',
 				$li . '.wp-has-current-submenu.opensub .wp-submenu li.current a:focus',
 			],
-			['color' => $g->variable('menu-submenu-focus-text')]
+			[
+				'color'            => $g->variable('menu-submenu-focus-text'),
+				'background-color' => $g->variable('menu-submenu-focus-background'),
+			]
 		);
 
 		$g->addRuleSet(

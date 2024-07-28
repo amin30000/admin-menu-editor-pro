@@ -327,6 +327,17 @@ class ameUtils {
 
 		return $outputQueryParams;
 	}
+
+	/**
+	 * Check if a string starts with a specific substring.
+	 *
+	 * @param string $haystack
+	 * @param string $needle
+	 * @return bool
+	 */
+	public static function stringStartsWith($haystack, $needle) {
+		return (substr($haystack, 0, strlen($needle)) === $needle);
+	}
 }
 
 /**

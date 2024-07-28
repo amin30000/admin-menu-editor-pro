@@ -47,7 +47,11 @@ Other [default/other]
 	upload_files
 	manage_links
 	unfiltered_upload
-	
+	resume_plugins
+	resume_themes
+	install_languages
+	view_site_health_checks
+
 Deprecated [default/deprecated]
 	edit_files
 	level_0

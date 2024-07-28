@@ -114,13 +114,20 @@
 
 		<!-- ko ifnot: ($data.templateName) -->
 		<div class="ame-twm-named-node"
-		     data-bind="css: {'ame-twm-tweak': ($data instanceof AmeTweakItem)}, attr: {'id': $data.htmlId}">
+		     data-bind="
+		        css: { 'ame-twm-tweak': (($data instanceof AmeTweakItem) || ($data instanceof AmeTweakAlias)) },
+		        attr: { 'id': $data.htmlId }">
 			<label class="ame-twm-tweak-label">
 				<!-- ko if: $data.actorAccess -->
 				<input type="checkbox"
 				       data-bind="checked: actorAccess.isChecked, indeterminate: actorAccess.isIndeterminate">
 				<!-- /ko -->
 				<span data-bind="text: label"></span>
+				<!-- ko if: $data.tooltip -->
+					<a data-bind="attr: {title: $data.tooltip}" class="ws_tooltip_trigger">
+						<span class="dashicons dashicons-info"></span>
+					</a>
+				<!-- /ko -->
 			</label>
 			<!-- ko if: $data.isUserDefined -->
 			<span class="ame-twm-tweak-actions">

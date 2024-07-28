@@ -1,5 +1,8 @@
 <?php
 
+use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
+use YahnisElsts\WpDependencyWrapper\ScriptDependency;
+
 /**
  * These flags control how the {@link wsMenuEditorExtras::check_current_user_access} method
  * deals with users that have multiple roles with different permissions. "RC" stands for "role combination".
@@ -8,10 +11,6 @@
 /**
  * Use only custom role permissions. Roles that don't have explicit settings will be ignored.
  */
-
-use YahnisElsts\PluginUpdateChecker\v5\PucFactory;
-use YahnisElsts\WpDependencyWrapper\ScriptDependency;
-
 define('AME_RC_ONLY_CUSTOM', 1);
 
 /**
@@ -121,9 +120,6 @@ class wsMenuEditorExtras {
 
 		//Let other components know we're Pro.
 		add_filter('admin_menu_editor_is_pro', array($this, 'is_pro_version'), 10, 0);
-
-		//Add menu item drop zones to the top-level and sub-menu containers.
-		add_action('admin_menu_editor-container', array($this, 'output_menu_dropzone'), 10, 1);
 
 		//Add submenu icons.
 		add_filter('admin_menu_editor-submenu_with_icon', array($this, 'add_submenu_icon_html'), 10, 2);
@@ -610,7 +606,11 @@ class wsMenuEditorExtras {
 			$item['page_title'] = strip_tags($item['menu_title']);
 		}
 
-		$slug = 'embedded-page-' . md5($page_id . '|' . $blog_id . '|' . count($this->embedded_wp_pages));
+		$slug_unique_salt = ameMenuItem::get($item, 'local_id', '');
+		if ( empty($slug_unique_salt) ) {
+			$slug_unique_salt = (string)count($this->embedded_wp_pages);
+		}
+		$slug = 'embedded-page-' . md5($page_id . '|' . $blog_id . '|' . $slug_unique_salt);
 		$this->embedded_wp_pages[$slug] = $item; //Used by the callback function.
 
 		//Add a virtual menu.
@@ -1068,7 +1068,7 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 			}
 
 			//Merge the imported menu with the current one.
-			$menu['tree'] = $wp_menu_editor->menu_merge($menu['tree']);
+			$menu['tree'] = $wp_menu_editor->menu_merge(isset($menu['tree']) ? $menu['tree'] : []);
 
 			//Everything looks okay, send back the menu data
 			$this->output_for_jquery_form( ameMenu::to_json($menu) );
@@ -1800,13 +1800,6 @@ wsEditorData.importMenuNonce = "<?php echo esc_js(wp_create_nonce('import_custom
 
 		$this->wp_menu_editor->disable_virtual_caps = $capsWereDisabled;
 		return $grantAccess;
-	}
-
-	function output_menu_dropzone($type = 'menu') {
-		printf(
-			'<div id="ws_%s_dropzone" class="ws_dropzone"> </div>',
-			($type == 'menu') ? 'top_menu' : 'sub_menu'
-		);
 	}
 
 	function pro_page_title(){

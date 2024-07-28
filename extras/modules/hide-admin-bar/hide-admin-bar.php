@@ -2,6 +2,10 @@
 
 /**
  * Hides the Admin Bar / Toolbar.
+ *
+ * phpcs:disable WordPressVIPMinimum.UserExperience.AdminBarRemoval
+ * ^- That's the whole point of this feature, hiding is disabled by default,
+ *    and the admin can choose the roles that will be affected.
  */
 class ameAdminBarHider {
 	const HIDEABLE_ITEM_ID = 'hide_admin_bar';
@@ -57,6 +61,8 @@ class ameAdminBarHider {
 		add_filter('wp_admin_bar_class', array($this, 'filter_admin_bar_class'));
 		add_action('admin_print_scripts-profile.php', array($this, 'hide_toolbar_settings'));
 		add_action('admin_bar_init', array($this, 'remove_bump_css'));
+		add_action('admin_bar_init', array($this, 'override_admin_bar_height_css'));
+		add_action('enqueue_block_editor_assets', array($this, 'add_gutenberg_styles'));
 	}
 
 	/**
@@ -97,7 +103,7 @@ class ameAdminBarHider {
 	public function hide_toolbar_settings() {
 		?>
 		<!--suppress CssUnusedSymbol -->
-		<style type="text/css"> .show-admin-bar { display: none; } </style>
+		<style> .show-admin-bar { display: none; } </style>
 		<?php
 	}
 
@@ -108,6 +114,53 @@ class ameAdminBarHider {
 	 */
 	public function remove_bump_css() {
 		remove_action('wp_head', '_admin_bar_bump_cb');
+	}
+
+	/**
+	 * Change the CSS variable that holds the Admin Bar height to 0. Also, add special-case
+	 * styles for popular plugins that assume a fixed Admin Bar height.
+	 *
+	 * Overriding the variable does not affect the actual height of the Admin Bar, but some
+	 * themes and plugins use this variable to calculate the position of elements on the page.
+	 */
+	public function override_admin_bar_height_css() {
+		if ( function_exists('wp_add_inline_style') ) {
+			$overrideCss = 'html { --wp-admin--admin-bar--height: 0px !important; }';
+
+			//WooCommerce uses a fixed header for its admin pages. It has a hardcoded "top: 32px"
+			//style (not using the CSS variable), so we need to override that to move the header.
+			if ( class_exists('WooCommerce', false) ) {
+				$overrideCss .= '.woocommerce-layout .woocommerce-layout__header { top: 0 !important; }';
+			}
+
+			wp_add_inline_style('admin-bar', $overrideCss);
+		}
+	}
+
+	public function add_gutenberg_styles() {
+		if ( did_action('admin_print_styles') ) {
+			$this->print_gutenberg_styles();
+		} else {
+			add_action('admin_print_styles', array($this, 'print_gutenberg_styles'));
+		}
+	}
+
+	/**
+	 * Output extra CSS for the Gutenberg editor interface.
+	 */
+	public function print_gutenberg_styles() {
+		//By default, the Gutenberg editor interface is offset from the top of the screen by
+		//32px or 46px (depending on media queries) to make space for the Admin Bar. Let's remove
+		//this offset when the Admin Bar is hidden.
+		?>
+		<!--suppress CssUnusedSymbol -->
+		<style>
+			.block-editor #editor .interface-interface-skeleton,
+			.block-editor-page .blocks-widgets-container .interface-interface-skeleton {
+				top: 0;
+			}
+		</style>
+		<?php
 	}
 
 	/**
@@ -134,3 +187,4 @@ class ameAdminBarHider {
 		return $definitions;
 	}
 }
+//phpcs:enable

@@ -263,6 +263,7 @@ class DashboardStyler extends \amePersistentProModule {
 						$cf->cssColor('itemHoverBackgroundColor', 'background-color', 'Item hover background color'),
 						$cf->cssColor('submenuTextColor', 'color', 'Submenu text color'),
 						$cf->cssColor('submenuTextHoverColor', 'color', 'Submenu text hover color'),
+						$cf->cssColor('submenuHoverBackgroundColor', 'color', 'Submenu item hover background color'),
 
 						$cf->cssLength(
 							'submenuItemHeight',
@@ -421,7 +422,8 @@ class DashboardStyler extends \amePersistentProModule {
 					$b->auto('toolbar.textHoverColor'),
 					$b->auto('toolbar.itemHoverBackgroundColor'),
 					$b->auto('toolbar.submenuTextColor'),
-					$b->auto('toolbar.submenuTextHoverColor')
+					$b->auto('toolbar.submenuTextHoverColor'),
+					$b->auto('toolbar.submenuHoverBackgroundColor')
 				),
 				$b->section(
 					'Submenus',
@@ -1385,6 +1387,19 @@ class DashboardStyler extends \amePersistentProModule {
 					'.wp-admin-bar-arrow',
 				],
 				['padding-top' => 'calc(4px + (var(--wp-admin--admin-bar--height, 32px) - 32px) / 2)']
+			),
+			//Move Gutenberg editor's header and top toolbar down.
+			new CssRuleSet(
+				[
+					'.interface-interface-skeleton',
+					'.edit-post-visual-editor .block-editor-block-contextual-toolbar.is-fixed',
+				],
+				['top' => 'var(--wp-admin--admin-bar--height, 32px)']
+			),
+			//Move the WooCommerce header.
+			new CssRuleSet(
+				['.woocommerce-layout .woocommerce-layout__header'],
+				['top' => 'var(--wp-admin--admin-bar--height, 32px)']
 			)
 		);
 
@@ -1610,6 +1625,17 @@ class DashboardStyler extends \amePersistentProModule {
 			],
 			['color' => $g->variable('submenuTextHoverColor')]
 		);
+
+		//Submenu item hover background color.
+		$g->addRuleSet(
+			[
+				'#wpadminbar .quicklinks .menupop ul li a:hover',
+				'#wpadminbar .quicklinks .menupop ul li a:focus',
+				'#wpadminbar .quicklinks .menupop ul li > .ab-item:hover',
+			],
+			['background-color' => $s->getSetting('toolbar.submenuHoverBackgroundColor')]
+		);
+
 		//"My Account" has its own text color rules.
 		//The display name uses the base text color, not the submenu text color.
 		$g->addRuleSet(

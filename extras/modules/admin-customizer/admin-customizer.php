@@ -1039,10 +1039,19 @@ class AmeAdminCustomizer extends \ameModule {
 
 		//Prevent WordPress from corrupting JSON data by "sanitizing" it.
 		add_filter('wp_insert_post_data', [$this, 'preserveUnsanitizedPostContent'], 20, 3);
-		if ( $existingPostId ) {
-			$postId = wp_update_post(wp_slash($postArray), true);
-		} else {
-			$postId = wp_insert_post(wp_slash($postArray), true);
+		//Convert exceptions to WP_Error instances. Normally, exceptions should not happen,
+		//but if they do, this will give the user an error message they can report to me.
+		try {
+			if ( $existingPostId ) {
+				$postId = wp_update_post(wp_slash($postArray), true);
+			} else {
+				$postId = wp_insert_post(wp_slash($postArray), true);
+			}
+		} catch (\Exception $e) {
+			$postId = new \WP_Error(
+				'ame_changeset_save_failed',
+				'Unexpected exception: ' . $e->getMessage()
+			);
 		}
 		remove_filter('wp_insert_post_data', [$this, 'preserveUnsanitizedPostContent'], 20);
 

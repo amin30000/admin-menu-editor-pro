@@ -291,7 +291,8 @@ class Wslm_LicenseServer {
 			if ( !$this->isValidUrl($siteUrl) ) {
 				return new WP_Error('invalid_site_url', 'You must specify a valid site URL when using a site token.', 400);
 			}
-			if ( $siteUrl != $this->sanitizeSiteUrl($license['site_url']) ) {
+			$expectedUrl = $this->sanitizeSiteUrl($license['site_url']);
+			if ( $siteUrl != $expectedUrl ) {
 				return new WP_Error('wrong_site', 'This token is associated with a different site.', 400);
 			}
 		}

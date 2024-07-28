@@ -7,6 +7,7 @@
 
 require_once __DIR__ . '/configurables.php';
 require_once __DIR__ . '/ameBaseTweak.php';
+require_once __DIR__ . '/ameTweakAlias.php';
 require_once __DIR__ . '/ameHideSelectorTweak.php';
 require_once __DIR__ . '/ameHideSidebarTweak.php';
 require_once __DIR__ . '/ameHideSidebarWidgetTweak.php';
@@ -15,6 +16,7 @@ require_once __DIR__ . '/ameJqueryTweak.php';
 require_once __DIR__ . '/ameTinyMceButtonManager.php';
 require_once __DIR__ . '/ameAdminCssTweakManager.php';
 require_once __DIR__ . '/ameGutenbergBlockManager.php';
+require_once __DIR__ . '/ameMediaRestrictionsManager.php';
 
 /** @noinspection PhpUnused The class is actually used in extras.php */
 
@@ -55,6 +57,11 @@ class ameTweakManager extends amePersistentModule {
 	 */
 	private $sections = [];
 
+	/**
+	 * @var ameTweakAlias[]
+	 */
+	private $aliases = [];
+
 	private $editorButtonManager;
 	private $adminCssManager;
 	private $gutenbergBlockManager;
@@ -83,6 +90,7 @@ class ameTweakManager extends amePersistentModule {
 		$this->editorButtonManager = new ameTinyMceButtonManager();
 		$this->adminCssManager = new ameAdminCssTweakManager();
 		$this->gutenbergBlockManager = new ameGutenbergBlockManager($menuEditor);
+		new ameMediaRestrictionsManager();
 
 		$this->tweakBuilders['admin-css'] = [$this->adminCssManager, 'createTweak'];
 
@@ -218,6 +226,14 @@ class ameTweakManager extends amePersistentModule {
 		if ( $applicationMode === self::APPLY_TWEAK_AUTO ) {
 			$this->pendingTweaks[$tweak->getId()] = $tweak;
 		}
+	}
+
+	/**
+	 * @param \ameTweakAlias $alias
+	 * @return void
+	 */
+	public function addAlias($alias) {
+		$this->aliases[] = $alias;
 	}
 
 	/**
@@ -454,9 +470,15 @@ class ameTweakManager extends amePersistentModule {
 			$sectionData[] = $section->toArray();
 		}
 
+		$aliasData = [];
+		foreach ($this->aliases as $alias) {
+			$aliasData[] = $alias->toArray();
+		}
+
 		return [
 			'tweaks'              => $tweakData,
 			'sections'            => $sectionData,
+			'aliases'             => $aliasData,
 			'isProVersion'        => $this->menuEditor->is_pro_version(),
 			'lastUserTweakSuffix' => ameUtils::get($settings, 'lastUserTweakSuffix', 0),
 		];
@@ -544,6 +566,7 @@ class ameTweakManager extends amePersistentModule {
 			'profile'                            => null,
 			'sidebar-widgets'                    => null,
 			'sidebars'                           => null,
+			'gutenberg-general'                  => 'Gutenberg Block Editor',
 		];
 		$enabledSections = apply_filters('admin_menu_editor-hideable_tweak_sections', $enabledSections);
 
@@ -551,6 +574,7 @@ class ameTweakManager extends amePersistentModule {
 		$parentCategories = [
 			ameGutenbergBlockManager::SECTION_ID => $postEditorCategory,
 			ameTinyMceButtonManager::SECTION_ID  => $postEditorCategory,
+			'gutenberg-general'                  => $postEditorCategory,
 		];
 
 		$categoriesBySection = [];

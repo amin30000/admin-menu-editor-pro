@@ -7,7 +7,7 @@ use YahnisElsts\AdminMenuEditor\Customizable\Controls\Section;
 use YahnisElsts\AdminMenuEditor\Customizable\Rendering\TabbedPanelRenderer;
 use YahnisElsts\AdminMenuEditor\Customizable\Settings\AbstractSetting;
 use YahnisElsts\AdminMenuEditor\Customizable\Storage\AbstractSettingsDictionary;
-use YahnisElsts\AdminMenuEditor\Customizable\Storage\LazyArrayStorage;
+use YahnisElsts\AdminMenuEditor\Customizable\Storage\MenuConfigurationWrapper;
 use YahnisElsts\AdminMenuEditor\Customizable\Storage\StorageInterface;
 use YahnisElsts\AdminMenuEditor\DynamicStylesheets\MenuScopedStylesheetHelper;
 use YahnisElsts\AdminMenuEditor\StyleGenerator\CssRuleSet;
@@ -74,7 +74,8 @@ class MenuStyler extends \ameModule {
 		}
 
 		$this->settings = new StyleSettings(
-			new MenuStylerStorage($this->menuEditor, $menuConfigId)
+			MenuConfigurationWrapper::getStore($menuConfigId, $this->menuEditor)
+				->buildSlot(StyleSettings::CONFIG_KEY)
 		);
 		return $this->settings;
 	}
@@ -117,6 +118,7 @@ class MenuStyler extends \ameModule {
 				$b->auto('logo.collapsedHeight')->params(['step' => 1]),
 				$b->auto('logo.backgroundColor'),
 				$b->auto('logo.linkUrl'),
+				$b->auto('logo.openInNewTab')->asGroup('New tab'),
 				$b->auto('logo.spacing')
 			),
 			$b->section(
@@ -248,6 +250,7 @@ class MenuStyler extends \ameModule {
 			['#adminmenu .wp-submenu'],
 			['left' => $s->getSetting('menuBar.menuWidth')]
 		);
+		//Collapsed menu width.
 		$g->addRuleSet(
 			[
 				'.folded #adminmenuback',
@@ -257,6 +260,47 @@ class MenuStyler extends \ameModule {
 			],
 			[$s->getSetting('menuBar.collapsedMenuWidth')]
 		);
+		$g->addRuleSet(
+			['.folded #wpcontent', '.folded #wpfooter'],
+			['margin-left' => $s->getSetting('menuBar.collapsedMenuWidth')]
+		);
+		$g->addRuleSet(
+			[
+				'.folded #adminmenu .opensub .wp-submenu',
+				'.folded #adminmenu a.menu-top:focus + .wp-submenu',
+			],
+			['left' => $s->getSetting('menuBar.collapsedMenuWidth')]
+		);
+		//The menu will auto-collapse at or below 960px.
+		$g->addMediaQuery(
+			$g->ifTruthy($s->getSetting('menuBar.collapsedMenuWidth')),
+			'screen and (max-width: 960px) and (min-width: 783px)',
+			new CssRuleSet(
+				[
+					'.auto-fold #adminmenuback',
+					'.auto-fold #adminmenuwrap',
+					'.auto-fold #adminmenu',
+					'.auto-fold #adminmenu li.menu-top',
+				],
+				[$s->getSetting('menuBar.collapsedMenuWidth')]
+			)
+		);
+		$g->addMediaQuery(
+			$g->ifTruthy($s->getSetting('menuBar.collapsedMenuWidth')),
+			'screen and (max-width: 960px) and (min-width: 783px)',
+			new CssRuleSet(
+				['.auto-fold #wpcontent', '.auto-fold #wpfooter'],
+				['margin-left' => $s->getSetting('menuBar.collapsedMenuWidth')]
+			),
+			new CssRuleSet(
+				[
+					'.auto-fold #adminmenu .opensub .wp-submenu',
+					'.auto-fold #adminmenu a.menu-top:focus + .wp-submenu',
+				],
+				['left' => $s->getSetting('menuBar.collapsedMenuWidth')]
+			)
+		);
+		//Submenu width.
 		$g->addRuleSet(
 			[
 				'#adminmenu .wp-not-current-submenu .wp-submenu',
@@ -275,7 +319,8 @@ class MenuStyler extends \ameModule {
 			]
 		);
 
-		//Push the new theme widget editor to the right to make room for the menu.
+		//Offset the Gutenberg editor and the new theme widget editor from the left to make room
+		//for the admin menu. By default, WP hard-codes the left position as 160px.
 		$g->addMediaQuery(
 			$g->ifSome([
 				$s->getSetting('menuBar.collapsedMenuWidth'),
@@ -283,11 +328,26 @@ class MenuStyler extends \ameModule {
 			]),
 			'screen and (min-width: 783px)',
 			new CssRuleSet(
-				['body:not(.folded) #widgets-editor .interface-interface-skeleton'],
+				[
+					'body:not(.folded) .block-editor__container .interface-interface-skeleton',
+					'body:not(.folded) #widgets-editor .interface-interface-skeleton',
+				],
 				['left' => $s->getSetting('menuBar.menuWidth')]
 			),
 			new CssRuleSet(
-				['body.folded #widgets-editor .interface-interface-skeleton'],
+				[
+					'body.folded .block-editor__container .interface-interface-skeleton',
+					'body.folded #widgets-editor .interface-interface-skeleton',
+				],
+				['left' => $s->getSetting('menuBar.collapsedMenuWidth')]
+			),
+			//Offset the fixed-positioned top toolbar.
+			new CssRuleSet(
+				['body:not(.folded) .edit-post-visual-editor .block-editor-block-contextual-toolbar.is-fixed'],
+				['left' => $s->getSetting('menuBar.menuWidth')]
+			),
+			new CssRuleSet(
+				['body.folded .edit-post-visual-editor .block-editor-block-contextual-toolbar.is-fixed'],
 				['left' => $s->getSetting('menuBar.collapsedMenuWidth')]
 			)
 		);
@@ -299,8 +359,40 @@ class MenuStyler extends \ameModule {
 			]),
 			'screen and (max-width: 960px) and (min-width: 783px)',
 			new CssRuleSet(
-				['body.auto-fold #widgets-editor .interface-interface-skeleton'],
+				[
+					'body.auto-fold .block-editor__container .interface-interface-skeleton',
+					'body.auto-fold #widgets-editor .interface-interface-skeleton',
+				],
 				['left' => 'var(--ame-ms-collapsed-menu-width, 36px)']
+			)
+		);
+
+		//Adjust the width of the WooCommerce header.
+		$g->addMediaQuery(
+			$g->ifSome([
+				$s->getSetting('menuBar.collapsedMenuWidth'),
+				$s->getSetting('menuBar.menuWidth'),
+			]),
+			'screen and (min-width: 783px)',
+			new CssRuleSet(
+				['body:not(.folded) .woocommerce-layout .woocommerce-layout__header'],
+				['width' => 'calc(100% - var(--ame-ms-menu-width, 160px))']
+			),
+			new CssRuleSet(
+				['body.folded .woocommerce-layout .woocommerce-layout__header'],
+				['width' => 'calc(100% - var(--ame-ms-collapsed-menu-width, 36px))']
+			)
+		);
+
+		$g->addMediaQuery(
+			$g->ifSome([
+				$s->getSetting('menuBar.collapsedMenuWidth'),
+				$s->getSetting('menuBar.menuWidth'),
+			]),
+			'screen and (max-width: 960px) and (min-width: 783px)',
+			new CssRuleSet(
+				['body.auto-fold .woocommerce-layout .woocommerce-layout__header'],
+				['width' => 'calc(100% - var(--ame-ms-collapsed-menu-width, 36px))']
 			)
 		);
 		//endregion
@@ -624,6 +716,7 @@ class MenuStyler extends \ameModule {
 			'logo.baseImage'       => 'baseImage',
 			'logo.collapsedImage'  => 'collapsedImage',
 			'logo.linkUrl'         => 'linkUrl',
+			'logo.openInNewTab'    => 'openInNewTab',
 			'logo.backgroundColor' => 'backgroundColor',
 			'logo.baseHeight'      => 'baseHeight',
 			'logo.collapsedHeight' => 'collapsedHeight',
@@ -879,6 +972,7 @@ class StyleSettings extends AbstractSettingsDictionary {
 						),
 						$cf->cssColor('backgroundColor', 'background-color', 'Background color'),
 						$cf->url('linkUrl', 'Logo link URL'),
+						$cf->boolean('openInNewTab', 'Open the logo link in a new tab', ['default' => false]),
 						$cf->cssSpacing('spacing', 'Logo Spacing'),
 					];
 				}
@@ -899,57 +993,5 @@ class StyleSettings extends AbstractSettingsDictionary {
 				}
 			),
 		];
-	}
-}
-
-class MenuStylerStorage extends LazyArrayStorage implements StorageInterface {
-
-	private $menuEditor;
-	private $configId;
-
-	public function __construct(\WPMenuEditor $menuEditor, $menuConfigId = null) {
-		$this->menuEditor = $menuEditor;
-		$this->configId = $menuConfigId;
-		parent::__construct();
-	}
-
-	private function getMenuConfigId() {
-		if ( $this->configId === null ) {
-			$this->configId = $this->menuEditor->get_loaded_menu_config_id();
-		}
-		return $this->configId;
-	}
-
-	protected function loadData() {
-		$configId = $this->getMenuConfigId();
-		$customMenu = $this->menuEditor->load_custom_menu($configId);
-		if ( ($customMenu !== null) && !empty($customMenu[StyleSettings::CONFIG_KEY]) ) {
-			return $customMenu[StyleSettings::CONFIG_KEY];
-		}
-		return [];
-	}
-
-	protected function storeData($newData) {
-		$configId = $this->getMenuConfigId();
-
-		$customMenu = $this->menuEditor->load_custom_menu($configId);
-		if ( $customMenu === null ) {
-			//Design problem: Can't save menu styles without a custom menu.
-			//Note that this will throw an exception if the menu has not been initialized yet.
-			//For example, it might not work in an AJAX request.
-			$customMenu = $this->menuEditor->get_active_admin_menu();
-			$configId = null;
-		}
-		$customMenu[StyleSettings::CONFIG_KEY] = $newData;
-		$this->menuEditor->set_custom_menu($customMenu, $configId);
-	}
-
-	protected function deleteStoredData() {
-		$customMenu = $this->menuEditor->load_custom_menu($this->getMenuConfigId());
-		if ( ($customMenu === null) || (empty($customMenu[StyleSettings::CONFIG_KEY])) ) {
-			return;
-		}
-		unset($customMenu[StyleSettings::CONFIG_KEY]);
-		$this->menuEditor->set_custom_menu($customMenu, $this->getMenuConfigId());
 	}
 }

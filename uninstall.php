@@ -2,7 +2,7 @@
 
 /**
  * @author W-Shadow
- * @copyright 2012
+ * @copyright 2024
  *
  * The uninstallation script.
  */
@@ -60,22 +60,17 @@ if( defined( 'ABSPATH') && defined('WP_UNINSTALL_PLUGIN') ) {
 		delete_metadata('user', 0, 'ame_rui_first_login_done', '', true);
 	}
 
-	//Call the "Easy Hide" module uninstaller.
-	$easyHideUninstaller = dirname(__FILE__) . '/extras/modules/easy-hide/eh-preferences-uninstall.php';
-	if ( file_exists($easyHideUninstaller) ) {
-		include ($easyHideUninstaller);
-	}
-
-	//Call the uninstaller for the "highlight new menus" module.
-	$highlighterUninstaller = dirname(__FILE__) . '/modules/highlight-new-menus/uninstall.php';
-	if ( file_exists($highlighterUninstaller) ) {
-		include (dirname(__FILE__) . '/modules/highlight-new-menus/uninstall.php');
-	}
-
-	//Call the role editor uninstaller.
-	$roleEditorUninstaller = dirname(__FILE__) . '/extras/modules/role-editor/uninstall.php';
-	if ( file_exists($roleEditorUninstaller) ) {
-		include (dirname(__FILE__) . '/extras/modules/role-editor/uninstall.php');
+	//Run module uninstallers.
+	$ameModuleUninstallers = [
+		__DIR__ . '/extras/modules/easy-hide/eh-preferences-uninstall.php',
+		__DIR__ . '/modules/highlight-new-menus/uninstall.php',
+		__DIR__ . '/extras/modules/role-editor/uninstall.php',
+		__DIR__ . '/extras/modules/nav-menu-visibility/uninstall.php',
+	];
+	foreach ($ameModuleUninstallers as $ameUninstallerFile) {
+		if ( file_exists($ameUninstallerFile) ) {
+			include ($ameUninstallerFile);
+		}
 	}
 
 	//Clear the stylesheet cache.

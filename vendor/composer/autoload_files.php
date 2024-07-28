@@ -7,5 +7,5 @@ $baseDir = dirname($vendorDir);
 
 return array(
     '925634b8b72383129427b0beaf838866' => $vendorDir . '/yahnis-elsts/ajax-wrapper/AjaxWrapper.php',
-    '45a16669595eb3c0a9e2994e57fc3188' => $vendorDir . '/yahnis-elsts/plugin-update-checker/load-v5p3.php',
+    'd05ecc14ff93fd612a81ec7e8ab4c2c9' => $vendorDir . '/yahnis-elsts/plugin-update-checker/load-v5p4.php',
 );

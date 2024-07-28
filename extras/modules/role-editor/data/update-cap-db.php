@@ -66,7 +66,11 @@ $pdo->exec("
 	FROM 
 		plugins
 		JOIN componentTypes
-	WHERE componentTypes.prefix = 'plugin:'
+		JOIN users ON (plugins.directory_id = users.user_id)
+	WHERE 
+		(componentTypes.prefix = 'plugin:') 
+	    AND (plugins.active_installs IS NOT NULL)
+		AND (users.slug = 'wporg')
 	ON CONFLICT DO NOTHING
 ");
 
