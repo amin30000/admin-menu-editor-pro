@@ -1,11 +1,11 @@
 <?php
 /*
 Plugin Name: Admin Menu Editor Pro
-Plugin URI: http://adminmenueditor.com/
+Plugin URI: http://dadechin.ir/
 Description: Lets you directly edit the WordPress admin menu. You can re-order, hide or rename existing menus, add custom menus and more. 
 Version: 2.26.1
-Author: Janis Elsts
-Author URI: http://w-shadow.com/
+Author: amin ramezani
+Author URI: http://aminramezanie.ir/
 Requires PHP: 5.6
 Slug: admin-menu-editor-pro
 */
